@@ -162,6 +162,18 @@ for msg in ["esim flag?", "sim type"]:
     record("complex fallback", f"'{msg}' stays fast-path (not COMPLEX)", ok,
            f"{body['type']}/{body.get('intent')}", ms)
 
+# ---------------- 8. Location/circle questions and bare "profile" ----------------
+for msg in ["where am i based on", "location?", "which circle am i on"]:
+    body, ms = chat(msg)
+    ok = body["type"] == "answer" and body["intent"] in ("PROFILE", "DEVICE_DETAILS") and "Delhi" in body["message"]
+    record("misc classification", f"'{msg}' resolves (telecomCircle)", ok,
+           f"{body['type']}/{body.get('intent')} — {body['message'][:70]}", ms)
+
+body, ms = chat("profile")
+record("misc classification", "bare 'profile' -> PROFILE, not ambiguous with OFFERS",
+       body["type"] == "answer" and body["intent"] == "PROFILE",
+       f"{body['type']}/{body.get('intent')}", ms)
+
 r = client.get("/health")
 record("health", "GET /health", r.status_code == 200 and r.json() == {"status": "ok"}, r.text)
 

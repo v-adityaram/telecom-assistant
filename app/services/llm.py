@@ -8,7 +8,7 @@ from app.config import get_settings
 
 logger = logging.getLogger("telecom_assistant.llm")
 
-TIMEOUT_SECONDS = 4.0
+TIMEOUT_SECONDS = 6.0  # observed real calls taking up to ~4.5s; 4.0 was too tight
 
 FALLBACK_RESULT = {
     "intent": "UNKNOWN",
@@ -48,14 +48,24 @@ Calibration examples (confidence >= 0.9 when the meaning is this clear):
   -> COMPLEX.
 - "what did I buy?" / "what was my last recharge" -> PURCHASE_HISTORY
 - "what offers do I have?" / "any deals for me" -> OFFERS
-- "show my details" / "am I prepaid or postpaid" -> PROFILE
+- "show my details" / "am I prepaid or postpaid" / "profile" (bare, alone)
+  -> PROFILE at confidence >= 0.9. Unlike "plan" below, the word "profile" by
+  itself is NOT ambiguous with OFFERS — it never means "offers" or "plans to
+  buy", it only ever means the account/profile itself. Do not apply the
+  "plan" ambiguity rule to the word "profile".
 - "check my plan" / "what's my plan" / "my plan" -> ALWAYS ambiguous, confidence
   below 0.5, possible_intents ["PROFILE","OFFERS"] — "plan" alone never means
   the current plan specifically; it is equally likely to mean plans available
   to buy. Do not resolve this to PROFILE directly no matter how the sentence
   is phrased, unless the message also says something like "current" or
   "existing" ("what's my current plan" -> PROFILE) or "new"/"buy"/"switch"
-  ("what plans can I buy" -> OFFERS).
+  ("what plans can I buy" -> OFFERS). This rule is specifically about the word
+  "plan" — it does not extend to "profile" (see above) or to "5G" (see below).
+- "where is my sim based" / "where am I based" / "location?" / "which circle
+  am I on" / "what telecom circle" -> PROFILE at confidence >= 0.9, scope
+  "specific" (this is the account's telecomCircle field — real data, not a
+  request for GPS/live location). Never treat a location/circle question as
+  too vague to classify.
 
 There is no separate SMS/text-messages intent — SMS remaining is one field
 inside BALANCE, same as data and voice minutes. Any message about SMS,

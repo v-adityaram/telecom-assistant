@@ -173,7 +173,18 @@ so a session on any machine can pick up where the last one left off.
       narrow questions the router now — correctly — answers with `scope=specific`, so the assertions
       were rewritten to check for the underlying fact rather than the literal template string.
       Full 43-check matrix passed twice in a row after all fixes landed.
-- [ ] **Phase 10 — Azure VM deployment**: not started. See "Deployment notes" below — SSH from the
+- [x] **Two more router gaps found live** (2026-09-03, same session): bare **"profile"** was being
+      treated as ambiguous with OFFERS (1/5 success) — the model was over-generalizing the "plan"
+      ambiguity rule to "profile" too, even though "profile" never means "offers/plans to buy" the
+      way "plan" genuinely does. **Location/circle questions** ("where am I based", "location?",
+      "which circle am I on") had no calibration at all and fell to the generic clarification
+      (2/8 success) despite the data existing (`PROFILE.telecomCircle`). Both fixed with explicit
+      prompt anchors in `app/services/llm.py`; verified 8/8 (location) and 6/6 (bare "profile") after.
+      Also bumped `llm.py`'s `TIMEOUT_SECONDS` 4.0 -> 6.0 — a live run showed 3 genuine
+      `llm_timeout` log entries (not classification errors) during heavy back-to-back testing, and
+      real successful calls had already been observed taking up to ~4.5s, so 4.0s was cutting it too
+      close for legitimate calls, not just abusive load. `scripts/live_smoke.py` extended to 47
+      checks (added the two new cases as permanent regression coverage); passed 47/47 after the fix.
       original dev machine is blocked by a corporate firewall, so deployment is git-pull-on-the-VM,
       not push-from-here.
 
