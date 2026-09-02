@@ -4,7 +4,7 @@ Not part of `pytest` (needs .env credentials and a server on :8000). Run it afte
 the router prompt, thresholds, or response templates:
 
     uvicorn app.main:app --port 8000        # in one terminal
-    python scripts/live_smoke_test.py       # in another (set PYTHONUTF8=1 on Windows)
+    python scripts/live_smoke.py            # in another (set PYTHONUTF8=1 on Windows)
 
 Exits non-zero if anything fails. Voice *audio* can't be driven here - only the voice backend
 endpoints are covered; the WebRTC loop needs a human with a microphone at http://127.0.0.1:8000/.

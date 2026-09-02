@@ -122,13 +122,29 @@ so a session on any machine can pick up where the last one left off.
 
 ## Not yet verified
 
-- **`scripts/live_smoke_test.py`** — a 37-check end-to-end matrix against a *running* server with
+- **`scripts/live_smoke.py`** — a 37-check end-to-end matrix against a *running* server with
   real Azure OpenAI + real telecom API calls (all 5 intents × 3 phrasings incl. typos, ambiguity +
   three follow-up resolutions, small talk, number-override and URL-injection attempts, bad-number
   error path, all 5 voice tool endpoints, token minting). Not part of `pytest` — needs `.env` and
   a server on :8000. Run it after touching the router prompt, thresholds, or templates. Passed
   37/37 on two consecutive runs on 2026-09-03 (avg chat latency ~2.9s, of which the telecom API
-  is ~0.6s and the rest is the gpt-5.4-nano call).
+  is ~0.6s and the rest is the gpt-5.4-nano call). **Renamed** from `live_smoke_test.py` — that name
+  matched pytest's default `*_test.py` discovery pattern, so a plain `pytest -q` silently picked it
+  up and ran its live network calls as if it were a unit test (crashed the whole run with an
+  INTERNALERROR from the script's own `SystemExit`). Also added `pytest.ini` (`testpaths = tests`)
+  so nothing outside `tests/` gets collected again by accident.
+- ~~"sms"/"sms bal" and other short SMS phrasings sometimes needed clarification instead of
+  resolving to BALANCE~~ — **fixed 2026-09-03**. There's no dedicated SMS intent (SMS remaining is
+  a field inside BALANCE), so short bare phrases didn't give the model enough signal and it was
+  inconsistent run to run (temperature-1 flakiness, same root cause as below). Added an explicit
+  calibration block to `SYSTEM_PROMPT` in `app/services/llm.py` stating SMS/text queries always map
+  to BALANCE. Verified 18/18 across 3 rounds on the exact phrases that were failing.
+- ~~"what's my plan" sometimes resolved straight to PROFILE instead of asking~~ — **fixed
+  2026-09-03**, found while re-verifying the SMS fix (1/6 repeats skipped clarification). Bare
+  "plan" phrasings ("what's my plan", "check my plan", "my plan") now have an explicit always-ask
+  rule in the prompt, with "current"/"buy" as the disambiguating words that let it resolve directly.
+  Verified 9/9 bare phrasings ask, both qualified phrasings ("current plan" -> PROFILE, "plans I can
+  buy" -> OFFERS) resolve directly, and the full 37-check matrix still passes.
 - ~~Follow-up clarification turns landing under the 0.80 threshold~~ — **resolved 2026-09-03**, it
   was three things: (1) the model reported its leading guess as `intent` (low confidence) and only
   listed the *other* reading in `possible_intents`, so PROFILE silently dropped out of the

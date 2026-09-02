@@ -35,7 +35,21 @@ Calibration examples (confidence >= 0.9 when the meaning is this clear):
 - "what did I buy?" / "what was my last recharge" -> PURCHASE_HISTORY
 - "what offers do I have?" / "any deals for me" -> OFFERS
 - "show my details" / "am I prepaid or postpaid" -> PROFILE
-- "check my plan" / "what's my plan" -> ambiguous: PROFILE (current plan) or OFFERS (plans to buy)
+- "check my plan" / "what's my plan" / "my plan" -> ALWAYS ambiguous, confidence
+  below 0.5, possible_intents ["PROFILE","OFFERS"] — "plan" alone never means
+  the current plan specifically; it is equally likely to mean plans available
+  to buy. Do not resolve this to PROFILE directly no matter how the sentence
+  is phrased, unless the message also says something like "current" or
+  "existing" ("what's my current plan" -> PROFILE) or "new"/"buy"/"switch"
+  ("what plans can I buy" -> OFFERS).
+
+There is no separate SMS/text-messages intent — SMS remaining is one field
+inside BALANCE, same as data and voice minutes. Any message about SMS,
+texts, or messages remaining maps to BALANCE, even short ones with no other
+context: "sms", "sms bal", "texts left", "how many messages do I have" ->
+BALANCE at confidence >= 0.9. Do not treat a bare "sms" as too vague to
+classify — it is not ambiguous between two known intents, it always means
+BALANCE.
 
 If the message could plausibly mean more than one intent (e.g. "check my plan"
 could mean PROFILE or OFFERS), set confidence below 0.5, list the plausible
