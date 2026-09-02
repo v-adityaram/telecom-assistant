@@ -21,10 +21,35 @@ so a session on any machine can pick up where the last one left off.
       allow-list (raises `UnknownIntentError`) — no arbitrary URLs/functions ever reach a call site.
       Tested in `tests/test_registry.py` (dispatch per intent, rejects `UNKNOWN`, rejects an
       arbitrary string).
-- [ ] **Phase 4 — Intent router**: not started. Next up. LLM backend decision below is now resolved.
-- [ ] **Phase 5 — Confidence + clarification**: not started.
-- [ ] **Phase 6 — Chat endpoint** (`POST /api/chat`): not started.
-- [ ] **Phase 7 — Tests + latency optimization**: ongoing per-phase, dedicated pass not started.
+- [x] **Phase 4 — Intent router**: `app/services/llm.py` (`classify_intent`, Azure OpenAI chat
+      completions, JSON-object mode, 4s timeout, single call — no separate spell-check step, typo
+      tolerance is handled in-prompt) + `app/router/intent_router.py` (`route_intent`) +
+      `app/router/schemas.py` (`RouterResult`). Any LLM failure (timeout/API error/malformed JSON)
+      degrades to a safe `UNKNOWN`/0.0 fallback rather than raising or guessing — verified live via
+      `uvicorn` with blank Azure OpenAI credentials: returns a 200 clarification response, not a 500.
+- [x] **Phase 5 — Confidence + clarification**: `app/router/confidence.py` (`build_router_result`)
+      enforces `INTENT_CONFIDENCE_THRESHOLD` and an intent allow-list (derived from
+      `TOOL_REGISTRY.keys()`, so an out-of-list or hallucinated intent — e.g. `DELETE_ACCOUNT` — is
+      always routed to clarification even at high stated confidence). `app/services/session_store.py`
+      holds in-memory `PendingClarification` (possible_intents) per `session_id` so a follow-up
+      answer ("the available ones") is classified against the narrowed candidate set rather than
+      from scratch.
+- [x] **Phase 6 — Chat endpoint** (`POST /api/chat`): `app/api/chat.py`. Flow: session lookup →
+      `route_intent` (constrained to pending candidates if any) → clarification response (no tool
+      call) or `execute_tool` via the Phase 3 registry → templated answer. `mobile_number` is a
+      required request field for now — sourced directly from the caller, never the model/message
+      text — per the seam `customer_context.py` already documents; Phase 11 auth will replace it
+      with a session-derived value. Added a `type: "error"` response variant (schema superset of
+      the plan's answer/clarification examples) so a downstream telecom API failure returns 200
+      with a friendly message instead of a 500.
+- [x] **Phase 7 — Tests + latency optimization**: `tests/test_llm.py`, `test_confidence.py`,
+      `test_intent_router.py`, `test_session_store.py`, `test_response.py`, `test_chat_api.py` (53
+      tests total, all passing, no live network calls — LLM and telecom calls are mocked).
+      `app/services/response.py` renders answers via deterministic per-intent templates (no second
+      LLM call on the fast path) built from real field shapes captured live against the telecom POC
+      API (`mainWallet.balance`, `plan.planName`, etc. — see git history for full sample payloads).
+      Existing request-logging middleware already reports `total_latency_ms` per request, so
+      `/api/chat` latency is visible without extra instrumentation.
 - [ ] **Phase 8 — Realtime Voice**: not started.
 - [ ] **Phase 9 — LangGraph fallback**: not started.
 - [ ] **Phase 10 — Azure VM deployment**: not started. See "Deployment notes" below — SSH from the
@@ -39,6 +64,15 @@ so a session on any machine can pick up where the last one left off.
 2. GitHub repo: `https://github.com/v-adityaram/telecom-assistant` (already set as `origin`, `main`
    branch). Auth is via a GitHub PAT stored in this machine's Git Credential Manager — **that
    credential does not travel with the repo**; a new machine needs its own token (see README).
+
+## Not yet verified
+
+- Phases 4–7 are unit-tested with the Azure OpenAI call mocked — no real `AZURE_OPENAI_ENDPOINT` /
+  `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_DEPLOYMENT` were available in this session, so intent
+  classification has never actually hit a live model. Before trusting it: fill in `.env`, try the
+  router's own example phrases (`"what is my balence"` → `BALANCE`, `"check my plan"` →
+  clarification with `PROFILE`/`OFFERS`), and re-tune `INTENT_CONFIDENCE_THRESHOLD` (currently 0.80)
+  against real model confidence scores — the plan explicitly says not to assume 0.80 is final.
 
 ## Deployment notes (for Phase 10, when we get there)
 
