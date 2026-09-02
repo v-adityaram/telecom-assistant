@@ -83,3 +83,21 @@ def test_confidence_is_clamped_to_valid_range():
     result = build_router_result(raw, THRESHOLD)
 
     assert result.confidence == 1.0
+
+
+def test_low_confidence_intent_is_merged_into_possible_intents():
+    # Model reported PROFILE as its leading guess but only listed OFFERS as the alternative.
+    raw = {"intent": "PROFILE", "confidence": 0.45, "possible_intents": ["OFFERS"]}
+
+    result = build_router_result(raw, THRESHOLD)
+
+    assert result.needs_clarification is True
+    assert result.possible_intents == ["PROFILE", "OFFERS"]
+
+
+def test_small_talk_without_alternatives_gets_no_chips():
+    raw = {"intent": "PROFILE", "confidence": 0.2, "possible_intents": []}
+
+    result = build_router_result(raw, THRESHOLD)
+
+    assert result.possible_intents == []

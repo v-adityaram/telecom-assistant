@@ -34,3 +34,18 @@ async def test_route_intent_below_threshold_needs_clarification(monkeypatch):
     assert result.intent is None
     assert result.needs_clarification is True
     assert result.possible_intents == ["PROFILE", "OFFERS"]
+
+
+@pytest.mark.asyncio
+async def test_followup_turn_uses_lower_threshold(monkeypatch):
+    async def fake_classify_intent(message, candidate_intents=None):
+        return {"intent": "OFFERS", "confidence": 0.7}
+
+    monkeypatch.setattr(intent_router, "classify_intent", fake_classify_intent)
+
+    open_result = await intent_router.route_intent("the available ones")
+    followup_result = await intent_router.route_intent("the available ones", candidate_intents=["PROFILE", "OFFERS"])
+
+    assert open_result.needs_clarification is True  # 0.7 < 0.80 open threshold
+    assert followup_result.needs_clarification is False  # 0.7 >= 0.60 follow-up threshold
+    assert followup_result.intent == "OFFERS"

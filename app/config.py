@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     telecom_api_key: str = ""
 
     intent_confidence_threshold: float = 0.80
+    # Lower bar for the follow-up turn after a clarification: the model is
+    # choosing between 2-3 named candidates, not classifying from scratch.
+    intent_followup_confidence_threshold: float = 0.60
 
     cors_allow_origins: str = "*"
 

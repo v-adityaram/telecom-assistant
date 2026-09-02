@@ -20,6 +20,11 @@ def build_router_result(raw: dict, threshold: float) -> RouterResult:
     intent = raw.get("intent")
     confidence = _as_confidence(raw.get("confidence"))
     possible_intents = [i for i in raw.get("possible_intents") or [] if i in ALLOWED_INTENTS]
+    # The model often reports its leading guess as `intent` (low confidence) and
+    # lists only the *other* reading in possible_intents — merge it back in so
+    # the user sees every option and the follow-up turn can resolve to any of them.
+    if possible_intents and intent in ALLOWED_INTENTS and intent not in possible_intents:
+        possible_intents.insert(0, intent)
 
     if intent not in ALLOWED_INTENTS or confidence < threshold:
         return RouterResult(

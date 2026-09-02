@@ -122,14 +122,21 @@ so a session on any machine can pick up where the last one left off.
 
 ## Not yet verified
 
-- Live-tested against the real Azure OpenAI resource on 2026-09-03 (see Phase 4 above) — single-shot
-  classification and the full `/api/chat` flow (including a real telecom API answer) both work.
-  **Still open**: candidate-constrained clarification follow-ups ("the available ones" after being
-  asked profile-vs-offers) come back right around the 0.80 confidence threshold and sometimes
-  re-trigger a second clarification instead of resolving — seen with both nano and mini. Worth
-  either lowering `INTENT_CONFIDENCE_THRESHOLD` specifically for the follow-up path, or tightening
-  `CANDIDATE_NOTE_TEMPLATE` in `app/services/llm.py` to push confidence higher when only two
-  well-separated candidates remain, once there's more real traffic to tune against.
+- **`scripts/live_smoke_test.py`** — a 37-check end-to-end matrix against a *running* server with
+  real Azure OpenAI + real telecom API calls (all 5 intents × 3 phrasings incl. typos, ambiguity +
+  three follow-up resolutions, small talk, number-override and URL-injection attempts, bad-number
+  error path, all 5 voice tool endpoints, token minting). Not part of `pytest` — needs `.env` and
+  a server on :8000. Run it after touching the router prompt, thresholds, or templates. Passed
+  37/37 on two consecutive runs on 2026-09-03 (avg chat latency ~2.9s, of which the telecom API
+  is ~0.6s and the rest is the gpt-5.4-nano call).
+- ~~Follow-up clarification turns landing under the 0.80 threshold~~ — **resolved 2026-09-03**, it
+  was three things: (1) the model reported its leading guess as `intent` (low confidence) and only
+  listed the *other* reading in `possible_intents`, so PROFILE silently dropped out of the
+  candidate set — `build_router_result` now merges it back in; (2) added
+  `INTENT_FOLLOWUP_CONFIDENCE_THRESHOLD=0.60` used only when candidates are present (a 2-way pick
+  is an easier call than open classification); (3) the plan's own canonical phrases are now
+  few-shot examples in `SYSTEM_PROMPT`, which stopped "show my details" wobbling — gpt-5 models
+  run at temperature 1 with no override, so borderline phrases vary run to run without anchors.
 - The Azure OpenAI API key used for this testing was pasted into a chat session — rotate it in the
   Azure portal once done testing, then update the local `.env` (never committed) with the new key.
 

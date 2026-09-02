@@ -29,6 +29,14 @@ Classify the user's message into exactly one of these intents:
 
 Be tolerant of typos and casual phrasing (e.g. "balence" means BALANCE).
 
+Calibration examples (confidence >= 0.9 when the meaning is this clear):
+- "what's my balance?" / "what is my balence?" / "how much money do I have?" -> BALANCE
+- "show me my phone" / "what's my SIM status" -> DEVICE_DETAILS
+- "what did I buy?" / "what was my last recharge" -> PURCHASE_HISTORY
+- "what offers do I have?" / "any deals for me" -> OFFERS
+- "show my details" / "am I prepaid or postpaid" -> PROFILE
+- "check my plan" / "what's my plan" -> ambiguous: PROFILE (current plan) or OFFERS (plans to buy)
+
 If the message could plausibly mean more than one intent (e.g. "check my plan"
 could mean PROFILE or OFFERS), set confidence below 0.5, list the plausible
 intents in possible_intents, and write a short natural-language question in
@@ -51,9 +59,13 @@ Respond with ONLY a JSON object of this exact shape, no other text:
 }}"""
 
 CANDIDATE_NOTE_TEMPLATE = (
-    "\nThe user is answering your own earlier clarification question. Choose "
-    "between these candidate intents unless the reply clearly means something "
-    "else: {candidates}.\n"
+    "\nThe user is answering your own earlier clarification question, choosing "
+    "between these candidate intents: {candidates}. Short replies are normal here "
+    "— \"the available ones\" / \"the ones I can buy\" mean OFFERS, \"my current "
+    "one\" / \"the one I'm on\" mean PROFILE. If the reply picks one candidate, "
+    "return that intent with confidence 0.9 or higher and an empty "
+    "possible_intents. Only stay below 0.5 if the reply genuinely fits none of "
+    "them or clearly asks for something else entirely.\n"
 )
 
 
