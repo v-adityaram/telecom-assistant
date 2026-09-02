@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 
-from openai import APIError, APITimeoutError, AsyncAzureOpenAI
+from openai import APIError, APITimeoutError, AsyncOpenAI
 
 from app.config import get_settings
 
@@ -49,12 +49,13 @@ CANDIDATE_NOTE_TEMPLATE = (
 )
 
 
-def _client() -> AsyncAzureOpenAI:
+def _client() -> AsyncOpenAI:
+    # Azure OpenAI's unified v1 API surface: base_url already ends in
+    # /openai/v1, model= is the Azure deployment name, no api-version needed.
     settings = get_settings()
-    return AsyncAzureOpenAI(
-        azure_endpoint=settings.azure_openai_endpoint,
+    return AsyncOpenAI(
+        base_url=settings.azure_openai_endpoint,
         api_key=settings.azure_openai_api_key,
-        api_version=settings.azure_openai_api_version,
     )
 
 
@@ -81,7 +82,10 @@ async def classify_intent(message: str, candidate_intents: list[str] | None = No
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": message},
                     ],
-                    temperature=0,
+                    # gpt-5 models reject temperature != default; minimal
+                    # reasoning effort keeps this fast for a plain classification.
+                    reasoning_effort="minimal",
+                    max_completion_tokens=200,
                     response_format={"type": "json_object"},
                 ),
                 timeout=TIMEOUT_SECONDS,

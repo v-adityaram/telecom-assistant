@@ -9,10 +9,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
 
+    # Azure OpenAI unified v1 API surface: endpoint ends in /openai/v1,
+    # deployment is passed as the chat completions "model" value.
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""
     azure_openai_deployment: str = ""
-    azure_openai_api_version: str = "2024-06-01"
 
     telecom_api_base_url: str = ""
     telecom_api_key: str = ""

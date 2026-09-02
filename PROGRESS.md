@@ -22,11 +22,22 @@ so a session on any machine can pick up where the last one left off.
       Tested in `tests/test_registry.py` (dispatch per intent, rejects `UNKNOWN`, rejects an
       arbitrary string).
 - [x] **Phase 4 — Intent router**: `app/services/llm.py` (`classify_intent`, Azure OpenAI chat
-      completions, JSON-object mode, 4s timeout, single call — no separate spell-check step, typo
-      tolerance is handled in-prompt) + `app/router/intent_router.py` (`route_intent`) +
-      `app/router/schemas.py` (`RouterResult`). Any LLM failure (timeout/API error/malformed JSON)
-      degrades to a safe `UNKNOWN`/0.0 fallback rather than raising or guessing — verified live via
-      `uvicorn` with blank Azure OpenAI credentials: returns a 200 clarification response, not a 500.
+      completions via the unified v1 API surface — `base_url` ending in `/openai/v1`, not the
+      classic `azure_endpoint`/`api_version` client — JSON-object mode, `reasoning_effort="minimal"`
+      + `max_completion_tokens=200` for gpt-5-series speed, 4s timeout, single call — no separate
+      spell-check step, typo tolerance is handled in-prompt) + `app/router/intent_router.py`
+      (`route_intent`) + `app/router/schemas.py` (`RouterResult`). Any LLM failure
+      (timeout/API error/malformed JSON) degrades to a safe `UNKNOWN`/0.0 fallback rather than
+      raising or guessing — verified live via `uvicorn` with blank Azure OpenAI credentials: returns
+      a 200 clarification response, not a 500. Requires `openai>=3.7.0` — the `1.51.0` originally
+      pinned predates gpt-5-series support (`reasoning_effort` param).
+      **Model choice**: benchmarked `gpt-5.4-nano` vs `gpt-5-mini` live against the user's own Azure
+      OpenAI resource (2026-09-03) on the plan's own example phrases — nano passed 7/7 single-shot
+      classifications vs mini's 6/7, both ~2/3 on candidate-constrained clarification follow-ups
+      (misses landed right at the 0.80 threshold, not a clear model-quality gap), latency
+      comparable (~1.2–2.9s per call either way). Went with **`gpt-5.4-nano`** (`AZURE_OPENAI_DEPLOYMENT`)
+      since it matched-or-beat mini here at ~1/5th the token cost — small sample (10 phrases total),
+      revisit if real traffic shows otherwise.
 - [x] **Phase 5 — Confidence + clarification**: `app/router/confidence.py` (`build_router_result`)
       enforces `INTENT_CONFIDENCE_THRESHOLD` and an intent allow-list (derived from
       `TOOL_REGISTRY.keys()`, so an out-of-list or hallucinated intent — e.g. `DELETE_ACCOUNT` — is
@@ -67,12 +78,16 @@ so a session on any machine can pick up where the last one left off.
 
 ## Not yet verified
 
-- Phases 4–7 are unit-tested with the Azure OpenAI call mocked — no real `AZURE_OPENAI_ENDPOINT` /
-  `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_DEPLOYMENT` were available in this session, so intent
-  classification has never actually hit a live model. Before trusting it: fill in `.env`, try the
-  router's own example phrases (`"what is my balence"` → `BALANCE`, `"check my plan"` →
-  clarification with `PROFILE`/`OFFERS`), and re-tune `INTENT_CONFIDENCE_THRESHOLD` (currently 0.80)
-  against real model confidence scores — the plan explicitly says not to assume 0.80 is final.
+- Live-tested against the real Azure OpenAI resource on 2026-09-03 (see Phase 4 above) — single-shot
+  classification and the full `/api/chat` flow (including a real telecom API answer) both work.
+  **Still open**: candidate-constrained clarification follow-ups ("the available ones" after being
+  asked profile-vs-offers) come back right around the 0.80 confidence threshold and sometimes
+  re-trigger a second clarification instead of resolving — seen with both nano and mini. Worth
+  either lowering `INTENT_CONFIDENCE_THRESHOLD` specifically for the follow-up path, or tightening
+  `CANDIDATE_NOTE_TEMPLATE` in `app/services/llm.py` to push confidence higher when only two
+  well-separated candidates remain, once there's more real traffic to tune against.
+- The Azure OpenAI API key used for this testing was pasted into a chat session — rotate it in the
+  Azure portal once done testing, then update the local `.env` (never committed) with the new key.
 
 ## Deployment notes (for Phase 10, when we get there)
 
