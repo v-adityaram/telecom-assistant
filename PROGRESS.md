@@ -59,6 +59,12 @@ so a session on any machine can pick up where the last one left off.
       `app/services/response.py` renders answers via deterministic per-intent templates (no second
       LLM call on the fast path) built from real field shapes captured live against the telecom POC
       API (`mainWallet.balance`, `plan.planName`, etc. — see git history for full sample payloads).
+      Reworked 2026-09-03 after live testing: the originals were one-line summaries, so "show me
+      the offers" got the same teaser three times. They now list everything (all offers with
+      price/validity/description, all purchases, full balance breakdown, device/SIM/network,
+      plan price/validity/flags), multi-line, with ₹ for INR. Also fixed a real bug: the API
+      returns purchases oldest-first and the old template called `transactions[0]` the "most
+      recent" — it now sorts by `purchasedAt` descending.
       Existing request-logging middleware already reports `total_latency_ms` per request, so
       `/api/chat` latency is visible without extra instrumentation.
 - [x] **Phase 8 — Realtime Voice — confirmed working end-to-end by a human on 2026-09-03**, full

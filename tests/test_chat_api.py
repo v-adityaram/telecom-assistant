@@ -47,7 +47,7 @@ def test_high_confidence_intent_returns_answer(monkeypatch):
     assert response.status_code == 200
     assert body["type"] == "answer"
     assert body["intent"] == "BALANCE"
-    assert "100 INR" in body["message"]
+    assert "Main balance: ₹100" in body["message"]
     assert body["session_id"]
 
 

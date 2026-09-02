@@ -3,9 +3,10 @@ from app.tools.registry import TOOL_REGISTRY
 
 ALLOWED_INTENTS = set(TOOL_REGISTRY.keys())
 
+# Only used when the model doesn't supply its own clarification_question.
 DEFAULT_CLARIFICATION_MESSAGE = (
-    "I'm not sure what you're asking. Could you tell me if you want your "
-    "profile, device details, balance, purchase history, or offers?"
+    "Happy to help — I can check your plan or profile, device details, balance, "
+    "purchase history, or available offers. Which one would you like?"
 )
 
 
