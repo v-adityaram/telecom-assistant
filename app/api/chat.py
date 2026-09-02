@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.router.confidence import COMPLEX_INTENT
 from app.router.intent_router import route_intent
+from app.services.answer_synthesis import synthesize_specific_answer
 from app.services.complex_flow import run_complex_flow
 from app.services.customer_context import get_customer_context
 from app.services.response import render_answer_message
@@ -78,10 +79,16 @@ async def chat(request: ChatRequest) -> ChatResponse:
             message="Sorry, I couldn't fetch that right now. Please try again shortly.",
         )
 
+    if result.scope == "specific":
+        single_tool_data = (tool_result.data or {}).get("data") or {}
+        message = await synthesize_specific_answer(request.message, {result.intent: single_tool_data})
+    else:
+        message = render_answer_message(result.intent, tool_result.data)
+
     return ChatResponse(
         type="answer",
         session_id=session_id,
         intent=result.intent,
-        message=render_answer_message(result.intent, tool_result.data),
+        message=message,
         data=tool_result.data,
     )

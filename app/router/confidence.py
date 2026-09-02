@@ -57,6 +57,7 @@ def build_router_result(raw: dict, threshold: float) -> RouterResult:
         needs_clarification=False,
         possible_intents=[],
         clarification_message=None,
+        scope=_as_scope(raw.get("scope")),
     )
 
 
@@ -65,3 +66,7 @@ def _as_confidence(value: object) -> float:
         return max(0.0, min(1.0, float(value)))  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0.0
+
+
+def _as_scope(value: object) -> str:
+    return value if value in ("full", "specific") else "full"

@@ -35,26 +35,34 @@ def record(section, name, ok, detail, ms=None):
 
 
 # ---------------- 1. Intent routing: 3 phrasings per intent ----------------
-INTENT_CASES = {
-    "PROFILE": ["show my details", "show my profile", "am I prepaid or postpaid"],
-    "DEVICE_DETAILS": ["what phone do I have", "show me my device", "what's my SIM status"],
-    "BALANCE": ["what is my balence", "how much data do I have left", "how many SMS do I have remaining"],
-    "PURCHASE_HISTORY": ["what did I buy recently", "show my purchase history", "what was my last recharge"],
-    "OFFERS": ["what offers do I have", "any deals available for me", "show me plans I can buy"],
-}
-EXPECT_IN_MESSAGE = {
-    "PROFILE": "Unlimited 5G Value 299",
-    "DEVICE_DETAILS": "OnePlus Nord CE 4",
-    "BALANCE": "Main balance: ₹102.5",
-    "PURCHASE_HISTORY": "newest first",
-    "OFFERS": "4 offers available",
-}
-for intent, phrasings in INTENT_CASES.items():
-    for p in phrasings:
-        body, ms = chat(p)
-        ok = body["type"] == "answer" and body["intent"] == intent and EXPECT_IN_MESSAGE[intent] in body["message"]
-        detail = f"{body['type']}/{body.get('intent')} — {body['message'].splitlines()[0][:70]}"
-        record("intent routing", f"{intent}: '{p}'", ok, detail, ms)
+# Each phrase checks for a fact-substring that appears regardless of whether
+# the router picked scope="full" (the deterministic template) or "specific"
+# (a synthesized answer) - both are correct answers to these questions; only
+# the unambiguously-broad phrasings ("show my details", "what offers do I
+# have", ...) are pinned to the exact full-template wording, since scope
+# should never pick "specific" for those.
+INTENT_CASES = [
+    ("PROFILE", "show my details", "Unlimited 5G Value 299"),
+    ("PROFILE", "show my profile", "Unlimited 5G Value 299"),
+    ("PROFILE", "am I prepaid or postpaid", "repaid"),  # matches Prepaid/prepaid either scope
+    ("DEVICE_DETAILS", "what phone do I have", "OnePlus Nord CE 4"),
+    ("DEVICE_DETAILS", "show me my device", "OnePlus Nord CE 4"),
+    ("DEVICE_DETAILS", "what's my SIM status", "Active"),
+    ("BALANCE", "what is my balence", "102.5"),
+    ("BALANCE", "how much data do I have left", "485"),  # "3485" full or "3,485" specific
+    ("BALANCE", "how many SMS do I have remaining", "76"),
+    ("PURCHASE_HISTORY", "what did I buy recently", "newest first"),  # "recently" (plural) must stay full
+    ("PURCHASE_HISTORY", "show my purchase history", "newest first"),
+    ("PURCHASE_HISTORY", "what was my last recharge", "Entertainment Weekend Pack"),
+    ("OFFERS", "what offers do I have", "4 offers available"),
+    ("OFFERS", "any deals available for me", "4 offers available"),
+    ("OFFERS", "show me plans I can buy", "4 offers available"),
+]
+for intent, p, expect_substr in INTENT_CASES:
+    body, ms = chat(p)
+    ok = body["type"] == "answer" and body["intent"] == intent and expect_substr in body["message"]
+    detail = f"{body['type']}/{body.get('intent')} — {body['message'].splitlines()[0][:70]}"
+    record("intent routing", f"{intent}: '{p}'", ok, detail, ms)
 
 # ---------------- 2. Ambiguity → clarification (no tool call) ----------------
 body, ms = chat("what's my plan")

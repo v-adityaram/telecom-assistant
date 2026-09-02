@@ -15,6 +15,7 @@ FALLBACK_RESULT = {
     "confidence": 0.0,
     "possible_intents": [],
     "clarification_question": "",
+    "scope": "full",
 }
 
 SYSTEM_PROMPT = """You are the intent classifier for a telecom customer assistant.
@@ -38,6 +39,13 @@ Calibration examples (confidence >= 0.9 when the meaning is this clear):
   esim" / "sim type" -> DEVICE_DETAILS (all SIM details, including whether
   it's an eSIM, live only in DEVICE_DETAILS — never treat a bare SIM/eSIM
   question as too vague to classify)
+- "is my phone 5g" / "does my phone support 5g" / "is my device 5g
+  compatible" -> DEVICE_DETAILS at confidence >= 0.9 (asking about the
+  physical device's hardware capability — networkCapability lives only in
+  DEVICE_DETAILS). This is NOT the same as "am I eligible for 5G" / "is my
+  plan 5G" (that's account-level eligibility, spans PROFILE too — see
+  COMPLEX below). "phone"/"device" -> DEVICE_DETAILS only; "eligible"/"plan"
+  -> COMPLEX.
 - "what did I buy?" / "what was my last recharge" -> PURCHASE_HISTORY
 - "what offers do I have?" / "any deals for me" -> OFFERS
 - "show my details" / "am I prepaid or postpaid" -> PROFILE
@@ -89,13 +97,34 @@ and still write a clarification_question, but make it a brief, friendly
 response that greets the user back if relevant and tells them what you can
 help with (profile, device details, balance, purchase history, or offers) —
 never leave clarification_question empty just because nothing matched.
+
+scope — for a resolved single-lookup intent (not COMPLEX, not a clarification),
+decide whether the user asked broadly or about one specific fact:
+- "full": the user asked broadly for a whole category — "what's my balance",
+  "show my details", "show my device", "what offers do I have", "what did I
+  buy" — they want the full picture, not just one field.
+- "specific": the user named one particular fact within that category and
+  only that fact should be answered — "sms" / "sms bal" (just SMS, not the
+  whole balance), "is my phone 5g" / "does it support 5g" (just yes/no),
+  "esim flag" / "is my sim esim" (just that), "how much data do I have left"
+  (just data), "is auto-renew on" (just that), "what's my IMEI" (just that),
+  "what was my last recharge" / "what was my most recent purchase" (the one
+  specific transaction they named, not the whole history).
+Default to "full" whenever unsure — only use "specific" when the message
+clearly names one narrow fact, not a whole category. For purchase history
+specifically: "recently" without "last"/"most recent" still means the list —
+"what did I buy recently" / "what did I buy" -> full (show the recent
+purchases, not just one — dropping down to a single item here would wrongly
+imply that's their only purchase); only "last"/"most recent" (singular,
+explicitly asking about the one latest transaction) -> specific.
 {candidate_note}
 Respond with ONLY a JSON object of this exact shape, no other text:
 {{
   "intent": "<one of PROFILE, DEVICE_DETAILS, BALANCE, PURCHASE_HISTORY, OFFERS, COMPLEX, UNKNOWN>",
   "confidence": <float between 0.0 and 1.0>,
   "possible_intents": [<intent strings, only when genuinely ambiguous between known intents, else []>],
-  "clarification_question": "<a short question or friendly redirect whenever confidence is below 0.5>"
+  "clarification_question": "<a short question or friendly redirect whenever confidence is below 0.5>",
+  "scope": "<'full' or 'specific', only meaningful when intent is one of the 5 lookups>"
 }}"""
 
 CANDIDATE_NOTE_TEMPLATE = (

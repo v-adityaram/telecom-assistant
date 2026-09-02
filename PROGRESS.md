@@ -148,6 +148,31 @@ so a session on any machine can pick up where the last one left off.
       plus concurrent tool fetches) vs ~2.9s for the fast path. Worth it only because it's gated to
       genuinely multi-domain/advisory cases; every clean single-intent query still takes the
       original one-call path.
+- [x] **Scope-aware chat answers** (2026-09-03, follow-on from Phase 9): a user asked "if I ask
+      'sms', can it give just sms" instead of the full balance dump — the same problem COMPLEX
+      solved for multi-domain questions, but this time within a *single* already-correct intent.
+      `app/services/llm.py`'s classifier gained an 8th field, `scope` (`"full"` or `"specific"`),
+      decided in the same call, zero extra cost for the common case. `app/services/answer_synthesis.py`
+      (new, standalone — deliberately not sharing code with `complex_flow.py`'s answer node, whose
+      test suite would otherwise need reworking for no real benefit) answers a narrow question
+      grounded in the single tool's already-fetched real data, same trust model as everywhere else:
+      never invents facts, only extracts/phrases from what was actually fetched. `chat.py` branches
+      on `RouterResult.scope` — `"full"` (default) keeps the exact original fast deterministic
+      template, `"specific"` calls the synthesis function instead.
+      **Two real gaps found and fixed while verifying, not assumed**: (1) "is my phone 5g" was
+      inconsistently DEVICE_DETAILS / UNKNOWN / a COMPLEX-flavored clarification (3/6 wrong) — it's
+      genuinely ambiguous with "am I eligible for 5G" (COMPLEX); added an explicit prompt anchor
+      distinguishing "phone/device" (DEVICE_DETAILS) from "eligible/plan" (COMPLEX), verified 8/8
+      after. (2) "what did I buy recently" started collapsing to a single transaction under the new
+      scope logic, which would wrongly imply that's the customer's only purchase (there are 3) —
+      added a rule that "recently" (plural framing) stays `full` while only "last"/"most recent"
+      (explicitly singular) goes `specific`, verified 4/4 and 3/3 respectively.
+      `scripts/live_smoke.py`'s original per-intent assertions were pinned to the exact full-template
+      wording; several of those phrasings ("am I prepaid or postpaid", "what's my SIM status", "how
+      much data do I have left", "how many SMS do I have remaining") turned out to be genuinely
+      narrow questions the router now — correctly — answers with `scope=specific`, so the assertions
+      were rewritten to check for the underlying fact rather than the literal template string.
+      Full 43-check matrix passed twice in a row after all fixes landed.
 - [ ] **Phase 10 — Azure VM deployment**: not started. See "Deployment notes" below — SSH from the
       original dev machine is blocked by a corporate firewall, so deployment is git-pull-on-the-VM,
       not push-from-here.

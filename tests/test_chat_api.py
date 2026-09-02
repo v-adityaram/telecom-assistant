@@ -173,3 +173,49 @@ def test_complex_intent_routes_to_langgraph_fallback(monkeypatch):
     assert body["message"] == "You're eligible for 5G on both your plan and device."
     assert body["data"] == {"PROFILE": {}, "DEVICE_DETAILS": {}}
     assert fake_run_complex_flow.captured == ("am I eligible for 5G", MOBILE_NUMBER)
+
+
+def test_specific_scope_uses_synthesized_answer_not_template(monkeypatch):
+    _patch_route_intent(
+        monkeypatch,
+        RouterResult(intent="BALANCE", confidence=0.95, needs_clarification=False, scope="specific"),
+    )
+    _patch_execute_tool(
+        monkeypatch,
+        ToolResult(success=True, data={"data": {"sms": {"remaining": 76}}}),
+    )
+
+    async def fake_synthesize(message, data):
+        fake_synthesize.captured = (message, data)
+        return "You have 76 SMS left."
+
+    monkeypatch.setattr(chat_module, "synthesize_specific_answer", fake_synthesize)
+
+    response = client.post("/api/chat", json={"message": "sms", "mobile_number": MOBILE_NUMBER})
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["message"] == "You have 76 SMS left."
+    assert fake_synthesize.captured == ("sms", {"BALANCE": {"sms": {"remaining": 76}}})
+
+
+def test_full_scope_still_uses_template(monkeypatch):
+    _patch_route_intent(
+        monkeypatch,
+        RouterResult(intent="BALANCE", confidence=0.95, needs_clarification=False, scope="full"),
+    )
+    _patch_execute_tool(
+        monkeypatch,
+        ToolResult(success=True, data={"data": {"mainWallet": {"balance": 50, "currency": "INR"}}}),
+    )
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("synthesize_specific_answer should not be called for full scope")
+
+    monkeypatch.setattr(chat_module, "synthesize_specific_answer", fail_if_called)
+
+    response = client.post("/api/chat", json={"message": "what's my balance", "mobile_number": MOBILE_NUMBER})
+
+    body = response.json()
+    assert response.status_code == 200
+    assert "Main balance: ₹50" in body["message"]

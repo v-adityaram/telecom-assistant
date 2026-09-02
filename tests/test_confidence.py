@@ -119,3 +119,27 @@ def test_complex_intent_never_offered_as_a_clarification_chip():
     result = build_router_result(raw, THRESHOLD)
 
     assert "COMPLEX" not in result.possible_intents
+
+
+def test_scope_defaults_to_full_when_missing():
+    raw = {"intent": "BALANCE", "confidence": 0.95}
+
+    result = build_router_result(raw, THRESHOLD)
+
+    assert result.scope == "full"
+
+
+def test_scope_passes_through_specific():
+    raw = {"intent": "BALANCE", "confidence": 0.95, "scope": "specific"}
+
+    result = build_router_result(raw, THRESHOLD)
+
+    assert result.scope == "specific"
+
+
+def test_invalid_scope_value_defaults_to_full():
+    raw = {"intent": "BALANCE", "confidence": 0.95, "scope": "everything"}
+
+    result = build_router_result(raw, THRESHOLD)
+
+    assert result.scope == "full"
