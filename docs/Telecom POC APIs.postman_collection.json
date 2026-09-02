@@ -1,0 +1,152 @@
+{
+  "info": {
+    "_postman_id": "b73d1b39-097e-44e8-a2ce-79719475ccca",
+    "name": "Telecom POC APIs",
+    "description": "Azure Function App APIs for Telecom-POC",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "55948057",
+    "_collection_link": "https://go.postman.co/collection/55948057-b73d1b39-097e-44e8-a2ce-79719475ccca?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Profile",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://telecom-poc-andkaxb4hrapgfhw.southafricanorth-01.azurewebsites.net/api/profile?mobileNumber=+919999900003",
+          "protocol": "https",
+          "host": [
+            "telecom-poc-andkaxb4hrapgfhw",
+            "southafricanorth-01",
+            "azurewebsites",
+            "net"
+          ],
+          "path": [
+            "api",
+            "profile"
+          ],
+          "query": [
+            {
+              "key": "mobileNumber",
+              "value": "+919999900003"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Device Details",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://telecom-poc-andkaxb4hrapgfhw.southafricanorth-01.azurewebsites.net/api/device-details?mobileNumber=+919999900003",
+          "protocol": "https",
+          "host": [
+            "telecom-poc-andkaxb4hrapgfhw",
+            "southafricanorth-01",
+            "azurewebsites",
+            "net"
+          ],
+          "path": [
+            "api",
+            "device-details"
+          ],
+          "query": [
+            {
+              "key": "mobileNumber",
+              "value": "+919999900003"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Balance",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://telecom-poc-andkaxb4hrapgfhw.southafricanorth-01.azurewebsites.net/api/balance?mobileNumber=+919999900003",
+          "protocol": "https",
+          "host": [
+            "telecom-poc-andkaxb4hrapgfhw",
+            "southafricanorth-01",
+            "azurewebsites",
+            "net"
+          ],
+          "path": [
+            "api",
+            "balance"
+          ],
+          "query": [
+            {
+              "key": "mobileNumber",
+              "value": "+919999900003"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Purchase History",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://telecom-poc-andkaxb4hrapgfhw.southafricanorth-01.azurewebsites.net/api/purchase-history?mobileNumber=+919999900003",
+          "protocol": "https",
+          "host": [
+            "telecom-poc-andkaxb4hrapgfhw",
+            "southafricanorth-01",
+            "azurewebsites",
+            "net"
+          ],
+          "path": [
+            "api",
+            "purchase-history"
+          ],
+          "query": [
+            {
+              "key": "mobileNumber",
+              "value": "+919999900003"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Offers",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://telecom-poc-andkaxb4hrapgfhw.southafricanorth-01.azurewebsites.net/api/offers?mobileNumber=+919999900003",
+          "protocol": "https",
+          "host": [
+            "telecom-poc-andkaxb4hrapgfhw",
+            "southafricanorth-01",
+            "azurewebsites",
+            "net"
+          ],
+          "path": [
+            "api",
+            "offers"
+          ],
+          "query": [
+            {
+              "key": "mobileNumber",
+              "value": "+919999900003"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
