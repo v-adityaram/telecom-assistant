@@ -1,7 +1,10 @@
 # Telecom AI Assistant (POC)
 
 Lightweight FastAPI backend for a telecom customer assistant (Chat + Realtime Voice).
-See `telecom_ai_assistant_implementation_plan.md` in the repo root for the full architecture and phase plan.
+
+- **Architecture and phase-by-phase plan**: [`docs/telecom_ai_assistant_implementation_plan.md`](docs/telecom_ai_assistant_implementation_plan.md) — read this first.
+- **Current progress and open decisions**: [`PROGRESS.md`](PROGRESS.md) — read this second, especially
+  if you're picking this project up on a different machine/session than the one that last worked on it.
 
 ## Local setup
 
@@ -21,5 +24,4 @@ pytest
 
 ## Current status
 
-- Phase 1: FastAPI foundation — done (`/health`, config, logging, global exception handling, CORS).
-- Remaining phases: see implementation plan.
+See [`PROGRESS.md`](PROGRESS.md) for phase-by-phase status and open decisions blocking further work.
