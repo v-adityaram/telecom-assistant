@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""
     azure_openai_deployment: str = ""
+    azure_openai_realtime_deployment: str = ""
+    # Optional: name of a deployed transcription model (e.g. whisper), used
+    # only to show a live transcript of what the caller said. Omit if unset.
+    azure_openai_transcribe_deployment: str = ""
 
     telecom_api_base_url: str = ""
     telecom_api_key: str = ""

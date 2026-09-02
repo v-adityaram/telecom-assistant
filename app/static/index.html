@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Telecom AI Assistant (POC)</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: #f4f5f7; color: #1a1a1a;
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 20px; }
+  .top-bar {
+    display: flex; gap: 12px; align-items: center; margin-bottom: 20px;
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 12px 16px;
+  }
+  .top-bar label { font-size: 13px; color: #444; }
+  .top-bar input {
+    flex: 1; max-width: 260px; padding: 8px 10px; border: 1px solid #ccc;
+    border-radius: 6px; font-size: 14px;
+  }
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 860px) { .panels { grid-template-columns: 1fr; } }
+  .panel {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 10px;
+    padding: 16px; display: flex; flex-direction: column; height: 70vh;
+  }
+  .panel h2 { font-size: 15px; margin: 0 0 12px; }
+  .log {
+    flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px;
+    padding: 10px; background: #fafafa; font-size: 13px; margin-bottom: 10px;
+  }
+  .msg { margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; max-width: 90%; }
+  .msg.user { background: #dbeafe; margin-left: auto; }
+  .msg.answer { background: #dcfce7; }
+  .msg.clarification { background: #fef9c3; }
+  .msg.error { background: #fee2e2; }
+  .msg.system { background: transparent; color: #888; font-style: italic; }
+  .msg .meta { font-size: 10px; color: #666; margin-bottom: 3px; text-transform: uppercase; }
+  .row { display: flex; gap: 8px; }
+  input[type=text] {
+    flex: 1; padding: 9px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
+  }
+  button {
+    padding: 9px 14px; border: none; border-radius: 6px; background: #2563eb; color: #fff;
+    font-size: 14px; cursor: pointer;
+  }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  button.stop { background: #dc2626; }
+  .status { font-size: 12px; color: #666; margin-top: 8px; }
+  .status.connected { color: #16a34a; font-weight: 600; }
+  .status.error { color: #dc2626; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Telecom AI Assistant — local test console</h1>
+<div class="sub">Chat and Voice both hit the same FastAPI backend and the same secure tool layer.</div>
+
+<div class="top-bar">
+  <label for="mobileNumber">Mobile number</label>
+  <input id="mobileNumber" type="text" value="+919999900003">
+  <span style="font-size:12px;color:#999;">(sample number from the telecom POC — real auth isn't wired up yet)</span>
+</div>
+
+<div class="panels">
+  <div class="panel">
+    <h2>Chat</h2>
+    <div class="log" id="chatLog"></div>
+    <div class="row">
+      <input id="chatInput" type="text" placeholder="e.g. what is my balence" autocomplete="off">
+      <button id="chatSend">Send</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Voice</h2>
+    <div class="log" id="voiceLog"></div>
+    <div class="row">
+      <button id="voiceStart">Start voice session</button>
+      <button id="voiceStop" class="stop" disabled>Stop</button>
+    </div>
+    <div class="status" id="voiceStatus">Not connected.</div>
+    <div style="margin-top:6px;">
+      <div style="font-size:11px;color:#888;margin-bottom:3px;">Mic input level (proves the browser is actually capturing audio, independent of Azure):</div>
+      <div style="height:10px;background:#eee;border-radius:5px;overflow:hidden;">
+        <div id="micMeter" style="height:100%;width:0%;background:#16a34a;transition:width 60ms linear;"></div>
+      </div>
+    </div>
+    <audio id="voiceAudio" autoplay></audio>
+  </div>
+</div>
+
+<script>
+// ---------- shared helpers ----------
+function mobileNumber() {
+  return document.getElementById('mobileNumber').value.trim();
+}
+
+function appendMsg(logEl, type, label, text) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + type;
+  if (label) {
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = label;
+    div.appendChild(meta);
+  }
+  const body = document.createElement('div');
+  body.textContent = text;
+  div.appendChild(body);
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// ---------- chat panel ----------
+const chatLog = document.getElementById('chatLog');
+const chatInput = document.getElementById('chatInput');
+const chatSend = document.getElementById('chatSend');
+let chatSessionId = null;
+
+async function sendChat() {
+  const message = chatInput.value.trim();
+  if (!message) return;
+  appendMsg(chatLog, 'user', 'you', message);
+  chatInput.value = '';
+  chatSend.disabled = true;
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        mobile_number: mobileNumber(),
+        session_id: chatSessionId,
+      }),
+    });
+    const body = await res.json();
+    chatSessionId = body.session_id || chatSessionId;
+
+    if (body.type === 'clarification') {
+      appendMsg(chatLog, 'clarification', 'clarification', body.message);
+    } else if (body.type === 'error') {
+      appendMsg(chatLog, 'error', 'error · ' + (body.intent || ''), body.message);
+    } else {
+      appendMsg(chatLog, 'answer', 'answer · ' + (body.intent || ''), body.message);
+    }
+  } catch (err) {
+    appendMsg(chatLog, 'error', 'error', 'Request failed: ' + err.message);
+  } finally {
+    chatSend.disabled = false;
+    chatInput.focus();
+  }
+}
+
+chatSend.addEventListener('click', sendChat);
+chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
+
+// ---------- voice panel ----------
+const voiceLog = document.getElementById('voiceLog');
+const voiceStart = document.getElementById('voiceStart');
+const voiceStop = document.getElementById('voiceStop');
+const voiceStatus = document.getElementById('voiceStatus');
+const voiceAudio = document.getElementById('voiceAudio');
+
+let peerConnection = null;
+let dataChannel = null;
+let micAudioContext = null;
+let micMeterRafId = null;
+
+function setVoiceStatus(text, cls) {
+  voiceStatus.textContent = text;
+  voiceStatus.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+// Independent of Azure entirely: proves whether the browser is actually
+// capturing non-silent audio from the mic when you talk.
+function startMicMeter(micStream) {
+  micAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+  const source = micAudioContext.createMediaStreamSource(micStream);
+  const analyser = micAudioContext.createAnalyser();
+  analyser.fftSize = 512;
+  source.connect(analyser);
+
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  const meterEl = document.getElementById('micMeter');
+
+  function tick() {
+    analyser.getByteTimeDomainData(data);
+    let sumSquares = 0;
+    for (let i = 0; i < data.length; i++) {
+      const v = (data[i] - 128) / 128;
+      sumSquares += v * v;
+    }
+    const rms = Math.sqrt(sumSquares / data.length);
+    meterEl.style.width = Math.min(100, Math.round(rms * 400)) + '%';
+    micMeterRafId = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+function stopMicMeter() {
+  if (micMeterRafId) cancelAnimationFrame(micMeterRafId);
+  if (micAudioContext) micAudioContext.close();
+  micMeterRafId = null;
+  micAudioContext = null;
+  const meterEl = document.getElementById('micMeter');
+  if (meterEl) meterEl.style.width = '0%';
+}
+
+async function startVoice() {
+  voiceStart.disabled = true;
+  setVoiceStatus('Requesting session...');
+
+  try {
+    const sessionRes = await fetch('/api/voice/session', { method: 'POST' });
+    const session = await sessionRes.json();
+    if (!session.success) {
+      setVoiceStatus('Failed to start session: ' + session.error, 'error');
+      voiceStart.disabled = false;
+      return;
+    }
+
+    peerConnection = new RTCPeerConnection();
+
+    peerConnection.ontrack = (event) => {
+      voiceAudio.srcObject = event.streams[0];
+      appendMsg(voiceLog, 'system', '', 'Remote audio track received.');
+    };
+    peerConnection.onconnectionstatechange = () => {
+      appendMsg(voiceLog, 'system', 'connection', peerConnection.connectionState);
+    };
+    peerConnection.oniceconnectionstatechange = () => {
+      appendMsg(voiceLog, 'system', 'ice', peerConnection.iceConnectionState);
+    };
+
+    setVoiceStatus('Requesting microphone access...');
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const micTrack = mic.getAudioTracks()[0];
+    peerConnection.addTrack(micTrack);
+    appendMsg(
+      voiceLog, 'system', 'mic track',
+      `${micTrack.label || '(unnamed device)'} — enabled=${micTrack.enabled} muted=${micTrack.muted} readyState=${micTrack.readyState}`
+    );
+    startMicMeter(mic);
+
+    dataChannel = peerConnection.createDataChannel('realtime-channel');
+
+    dataChannel.addEventListener('open', () => {
+      setVoiceStatus('Connected — start talking.', 'connected');
+      appendMsg(voiceLog, 'system', '', 'Session started. Speak into your microphone.');
+      voiceStop.disabled = false;
+    });
+
+    dataChannel.addEventListener('message', (event) => onRealtimeEvent(JSON.parse(event.data)));
+    dataChannel.addEventListener('close', () => setVoiceStatus('Disconnected.'));
+
+    // Do NOT use ?webrtcfilter=on here — it suppresses the
+    // response.function_call_arguments.done event our tool-calling loop needs.
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    const sdpRes = await fetch(session.realtime_url, {
+      method: 'POST',
+      body: offer.sdp,
+      headers: {
+        Authorization: `Bearer ${session.client_secret}`,
+        'Content-Type': 'application/sdp',
+      },
+    });
+    if (!sdpRes.ok) {
+      setVoiceStatus('SDP exchange failed: ' + sdpRes.status, 'error');
+      voiceStart.disabled = false;
+      return;
+    }
+    const answerSdp = await sdpRes.text();
+    await peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+  } catch (err) {
+    setVoiceStatus('Error: ' + err.message, 'error');
+    stopMicMeter();
+    voiceStart.disabled = false;
+  }
+}
+
+function stopVoice() {
+  stopMicMeter();
+  if (dataChannel) dataChannel.close();
+  if (peerConnection) peerConnection.close();
+  dataChannel = null;
+  peerConnection = null;
+  voiceStart.disabled = false;
+  voiceStop.disabled = true;
+  setVoiceStatus('Stopped.');
+  appendMsg(voiceLog, 'system', '', 'Session stopped.');
+}
+
+voiceStart.addEventListener('click', startVoice);
+voiceStop.addEventListener('click', stopVoice);
+
+// Event names vary slightly across API doc revisions, so we listen for both
+// variants where docs disagree rather than guess which one this deployment uses.
+const DELTA_EVENT_SUFFIXES = ['.delta'];
+const LIFECYCLE_EVENTS = new Set([
+  'session.created', 'conversation.created', 'conversation.item.created',
+  'response.created', 'response.done', 'input_audio_buffer.speech_started',
+  'input_audio_buffer.speech_stopped', 'input_audio_buffer.committed',
+]);
+
+async function onRealtimeEvent(evt) {
+  console.log('realtime event:', evt.type, evt);
+
+  switch (evt.type) {
+    case 'conversation.item.input_audio_transcription.completed':
+    case 'conversation.item.audio_transcription.completed':
+      appendMsg(voiceLog, 'user', 'you (transcribed)', evt.transcript || '');
+      return;
+    case 'response.output_audio_transcript.done':
+    case 'response.audio_transcript.done':
+      appendMsg(voiceLog, 'answer', 'assistant', evt.transcript || '');
+      return;
+    case 'response.function_call_arguments.done':
+      await handleFunctionCall(evt);
+      return;
+    case 'error':
+      appendMsg(voiceLog, 'error', 'error', evt.error?.message || JSON.stringify(evt));
+      return;
+    case 'input_audio_buffer.speech_started':
+      appendMsg(voiceLog, 'system', '', '🎤 heard you speaking...');
+      return;
+    case 'input_audio_buffer.speech_stopped':
+      appendMsg(voiceLog, 'system', '', '🎤 stopped — waiting for a response...');
+      return;
+  }
+
+  if (DELTA_EVENT_SUFFIXES.some((suffix) => evt.type.endsWith(suffix))) return; // too noisy for the visible log
+  if (LIFECYCLE_EVENTS.has(evt.type)) {
+    appendMsg(voiceLog, 'system', 'evt', evt.type);
+    return;
+  }
+  // Anything else unrecognized: still surface it, compactly, so nothing is silently dropped.
+  appendMsg(voiceLog, 'system', 'evt', evt.type);
+}
+
+async function handleFunctionCall(evt) {
+  appendMsg(voiceLog, 'system', 'tool call', evt.name);
+
+  let result;
+  try {
+    const res = await fetch('/api/voice/tool', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ function_name: evt.name, mobile_number: mobileNumber() }),
+    });
+    result = await res.json();
+  } catch (err) {
+    result = { success: false, error: 'request_failed: ' + err.message };
+  }
+
+  const output = result.success ? result.data : { error: result.error || 'tool_error' };
+
+  dataChannel.send(JSON.stringify({
+    type: 'conversation.item.create',
+    item: {
+      type: 'function_call_output',
+      call_id: evt.call_id,
+      output: JSON.stringify(output),
+    },
+  }));
+  dataChannel.send(JSON.stringify({ type: 'response.create' }));
+}
+</script>
+</body>
+</html>

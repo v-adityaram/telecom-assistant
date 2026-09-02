@@ -61,7 +61,39 @@ so a session on any machine can pick up where the last one left off.
       API (`mainWallet.balance`, `plan.planName`, etc. — see git history for full sample payloads).
       Existing request-logging middleware already reports `total_latency_ms` per request, so
       `/api/chat` latency is visible without extra instrumentation.
-- [ ] **Phase 8 — Realtime Voice**: not started.
+- [x] **Phase 8 — Realtime Voice — confirmed working end-to-end by a human on 2026-09-03**, full
+      loop: mic → server VAD → transcription → model → tool call → real telecom API → spoken answer,
+      including multi-turn conversation, interruption/truncation (barge-in), and Hindi/English
+      switching. Two real bugs found and fixed from that session: (1) the model defaulted to Hindi
+      instead of matching the caller's actual language (e.g. Telugu) — fixed by adding an explicit
+      "always reply in whatever language the caller just used" instruction to `INSTRUCTIONS` in
+      `app/services/realtime.py`; (2) perceived voice inconsistency (sounded like it switched
+      speaker) turned out **not** to be a bug — `voice: "alloy"` is hardcoded and never varies
+      per-request, confirmed by reading the code; likely just that voice's natural prosody varying
+      across languages/interruptions. All 5 tools (`get_profile`, `get_device_details`,
+      `get_balance`, `get_purchase_history`, `get_offers`) verified live via both `/api/chat` and
+      `/api/voice/tool` on 2026-09-03.
+      `app/services/realtime.py` (`create_realtime_session`) mints a
+      short-lived ephemeral token via Azure's GA endpoint (`POST {endpoint}/realtime/client_secrets`)
+      — the long-lived `AZURE_OPENAI_API_KEY` never reaches the browser, only the ephemeral token +
+      public `realtime_url` do. `app/api/voice.py` exposes that as `POST /api/voice/session`, plus
+      `POST /api/voice/tool` — the endpoint the browser calls when the realtime model requests a
+      function call; validates the function name against `FUNCTION_NAME_TO_INTENT` (asserted equal
+      to `TOOL_REGISTRY.keys()` at import time) and dispatches through the *same* Phase 3
+      `execute_tool` registry chat uses, per the plan's "don't duplicate telecom tools for voice"
+      rule. Voice's 5 realtime tools are zero-argument by design — mobileNumber is never a model-
+      supplied parameter, same rule as chat.
+      **Frontend**: `app/static/index.html`, served at `GET /` — a single dependency-free HTML/JS
+      page with a Chat panel (hits `/api/chat` directly) and a Voice panel (WebRTC straight from the
+      browser to Azure's `/realtime/calls` SDP endpoint using the ephemeral token; mic via
+      `getUserMedia`; on `response.function_call_arguments.done` it calls `/api/voice/tool` and
+      feeds the result back via a `function_call_output` conversation item). Deliberately **omits**
+      the docs' `?webrtcfilter=on` query param — that filter's allow-listed event set does not
+      include `response.function_call_arguments.done`, which would silently break tool calling.
+      Also added a live mic-level meter (Web Audio `AnalyserNode`) to the Voice panel, independent
+      of Azure entirely — useful for isolating "browser isn't capturing audio" from "Azure isn't
+      responding" if voice ever seems dead again. Tested with mocks: `tests/test_realtime.py`,
+      `tests/test_voice_api.py`.
 - [ ] **Phase 9 — LangGraph fallback**: not started.
 - [ ] **Phase 10 — Azure VM deployment**: not started. See "Deployment notes" below — SSH from the
       original dev machine is blocked by a corporate firewall, so deployment is git-pull-on-the-VM,
@@ -92,13 +124,21 @@ so a session on any machine can pick up where the last one left off.
 ## Deployment notes (for Phase 10, when we get there)
 
 - Target VM: Azure 1 GB Ubuntu, public IP `104.211.224.38`, user `azureuser`.
-- The machine used to build this (Phase 1–2) sits behind a corporate network that blocks *outbound*
-  SSH (port 22) entirely — confirmed by testing against both the VM and a known-good host
-  (`github.com:22`), both failed, while port 80 to the VM succeeded. NSG rules on the VM (ports
-  22/80/8000/443, priorities 300/320/330/340) were not the blocker.
-- Chosen workaround: build and test everything locally, push to GitHub, then `git pull` directly
-  on the VM (via Azure Portal browser SSH/Serial Console, or from a network that isn't blocked)
-  rather than pushing from the dev machine.
+- **Outbound SSH is machine/network-dependent, not VM-side.** The machine used to build Phase 1–2
+  sat behind a corporate network that blocked outbound port 22 entirely (confirmed against both the
+  VM and `github.com:22`). Re-tested from a different machine on 2026-09-03: port 22 is open and a
+  password-auth SSH login succeeds fine. So the "deploy via Azure Portal console" workaround below
+  is a fallback for a blocked network, not a hard requirement — check `nc`/`Test-NetConnection` to
+  `104.211.224.38:22` first; if it's open, a normal `git clone`/`git pull` over SSH from that machine
+  works.
+- **VM state as of 2026-09-03**: `~/telecom-assistant` exists but is *not* a git checkout — it only
+  has a `venv/` directory, no code. Nothing has actually been deployed yet; Phase 10 (clone the repo,
+  install deps, wire up nginx + a systemd service for uvicorn) is still fully ahead of us.
+  `~/voice-agent` is a separate, apparently unrelated folder (own `.venv`, a small `main.py`) — not
+  part of this project's plan, left untouched.
+- Fallback workaround (if SSH is blocked from wherever you're building): build and test everything
+  locally, push to GitHub, then `git pull` directly on the VM via Azure Portal browser SSH/Serial
+  Console instead of pushing from the dev machine.
 - Do not run a local LLM, Ollama, Elasticsearch, or Kubernetes on the VM — 1 GB RAM. Nginx + one
   FastAPI (uvicorn) process only; add swap as a safety margin.
 

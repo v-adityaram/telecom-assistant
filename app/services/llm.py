@@ -33,13 +33,21 @@ If the message could plausibly mean more than one intent (e.g. "check my plan"
 could mean PROFILE or OFFERS), set confidence below 0.5, list the plausible
 intents in possible_intents, and write a short natural-language question in
 clarification_question that would resolve the ambiguity.
+
+If the message is a greeting, small talk, a question about you/the assistant
+itself, or otherwise clearly UNKNOWN (not ambiguous between two of the known
+intents — genuinely unrelated to the account), still set confidence below 0.5
+and still write a clarification_question, but make it a brief, friendly
+response that greets the user back if relevant and tells them what you can
+help with (profile, device details, balance, purchase history, or offers) —
+never leave clarification_question empty just because nothing matched.
 {candidate_note}
 Respond with ONLY a JSON object of this exact shape, no other text:
 {{
   "intent": "<one of PROFILE, DEVICE_DETAILS, BALANCE, PURCHASE_HISTORY, OFFERS, UNKNOWN>",
   "confidence": <float between 0.0 and 1.0>,
-  "possible_intents": [<intent strings, only when genuinely ambiguous, else []>],
-  "clarification_question": "<short question, only when ambiguous, else empty string>"
+  "possible_intents": [<intent strings, only when genuinely ambiguous between known intents, else []>],
+  "clarification_question": "<a short question or friendly redirect whenever confidence is below 0.5>"
 }}"""
 
 CANDIDATE_NOTE_TEMPLATE = (

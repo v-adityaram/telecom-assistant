@@ -1,14 +1,17 @@
 import logging
 import time
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
-from app.api import chat, health
+from app.api import chat, health, voice
 from app.config import get_settings
 from app.logging_config import configure_logging
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -26,6 +29,12 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(chat.router)
+app.include_router(voice.router)
+
+
+@app.get("/", include_in_schema=False)
+async def index() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.middleware("http")
