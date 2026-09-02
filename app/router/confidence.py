@@ -3,6 +3,10 @@ from app.tools.registry import TOOL_REGISTRY
 
 ALLOWED_INTENTS = set(TOOL_REGISTRY.keys())
 
+# Not a tool-registry entry — chat.py routes this to the LangGraph fallback
+# (app/services/complex_flow.py) instead of execute_tool.
+COMPLEX_INTENT = "COMPLEX"
+
 # Only used when the model doesn't supply its own clarification_question.
 DEFAULT_CLARIFICATION_MESSAGE = (
     "Happy to help — I can check your plan or profile, device details, balance, "
@@ -19,6 +23,18 @@ def build_router_result(raw: dict, threshold: float) -> RouterResult:
     """
     intent = raw.get("intent")
     confidence = _as_confidence(raw.get("confidence"))
+
+    if intent == COMPLEX_INTENT:
+        # A routing decision, not a single tool call — never gated behind the
+        # threshold, and never offered as a clarification chip.
+        return RouterResult(
+            intent=COMPLEX_INTENT,
+            confidence=confidence,
+            needs_clarification=False,
+            possible_intents=[],
+            clarification_message=None,
+        )
+
     possible_intents = [i for i in raw.get("possible_intents") or [] if i in ALLOWED_INTENTS]
     # The model often reports its leading guess as `intent` (low confidence) and
     # lists only the *other* reading in possible_intents — merge it back in so

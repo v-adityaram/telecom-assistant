@@ -25,13 +25,19 @@ Classify the user's message into exactly one of these intents:
 - BALANCE: account balance, data/voice/SMS remaining
 - PURCHASE_HISTORY: past purchases/recharges/transactions
 - OFFERS: available offers/plans/deals to buy
+- COMPLEX: needs real data from more than one of the areas above to answer
+  well, or asks for reasoning/advice using account data, or bundles multiple
+  explicit requests in one message — see the COMPLEX section below
 - UNKNOWN: anything else, or the message is too vague to classify
 
 Be tolerant of typos and casual phrasing (e.g. "balence" means BALANCE).
 
 Calibration examples (confidence >= 0.9 when the meaning is this clear):
 - "what's my balance?" / "what is my balence?" / "how much money do I have?" -> BALANCE
-- "show me my phone" / "what's my SIM status" -> DEVICE_DETAILS
+- "show me my phone" / "what's my SIM status" / "esim flag?" / "is my sim
+  esim" / "sim type" -> DEVICE_DETAILS (all SIM details, including whether
+  it's an eSIM, live only in DEVICE_DETAILS — never treat a bare SIM/eSIM
+  question as too vague to classify)
 - "what did I buy?" / "what was my last recharge" -> PURCHASE_HISTORY
 - "what offers do I have?" / "any deals for me" -> OFFERS
 - "show my details" / "am I prepaid or postpaid" -> PROFILE
@@ -51,9 +57,29 @@ BALANCE at confidence >= 0.9. Do not treat a bare "sms" as too vague to
 classify — it is not ambiguous between two known intents, it always means
 BALANCE.
 
-If the message could plausibly mean more than one intent (e.g. "check my plan"
-could mean PROFILE or OFFERS), set confidence below 0.5, list the plausible
-intents in possible_intents, and write a short natural-language question in
+COMPLEX — use this when a quick clarifying question wouldn't actually help,
+because the answer genuinely needs more than a single lookup. Examples:
+- "what are my add-ons" -> COMPLEX (could mean add-ons you already have —
+  BALANCE — or add-on offers to buy — OFFERS; answering well needs both, not
+  a binary pick)
+- "am I eligible for 5G" -> COMPLEX (depends on both your plan's PROFILE flags
+  and your DEVICE_DETAILS/SIM capability)
+- "what roaming charges or offers do I have" -> COMPLEX (needs current
+  roaming status AND available roaming offers)
+- "should I get a roaming pack for my trip to Vizag" -> COMPLEX (asks for
+  advice grounded in account data, not a raw lookup)
+- "check my balance and tell me what offers I have" -> COMPLEX (two explicit
+  requests in one message)
+Set confidence 0.9 for a clear COMPLEX case; possible_intents and
+clarification_question are not used when intent is COMPLEX (leave them empty).
+Do NOT use COMPLEX for "check my plan" / "what's my plan" / bare "plan" —
+that stays the normal PROFILE-vs-OFFERS clarification below; a quick pick
+resolves it, no deeper lookup needed.
+
+If the message could plausibly mean exactly one of two single-lookup intents
+(e.g. "check my plan" could mean PROFILE or OFFERS, and a quick pick from the
+user would resolve it), set confidence below 0.5, list the plausible intents
+in possible_intents, and write a short natural-language question in
 clarification_question that would resolve the ambiguity.
 
 If the message is a greeting, small talk, a question about you/the assistant
@@ -66,7 +92,7 @@ never leave clarification_question empty just because nothing matched.
 {candidate_note}
 Respond with ONLY a JSON object of this exact shape, no other text:
 {{
-  "intent": "<one of PROFILE, DEVICE_DETAILS, BALANCE, PURCHASE_HISTORY, OFFERS, UNKNOWN>",
+  "intent": "<one of PROFILE, DEVICE_DETAILS, BALANCE, PURCHASE_HISTORY, OFFERS, COMPLEX, UNKNOWN>",
   "confidence": <float between 0.0 and 1.0>,
   "possible_intents": [<intent strings, only when genuinely ambiguous between known intents, else []>],
   "clarification_question": "<a short question or friendly redirect whenever confidence is below 0.5>"

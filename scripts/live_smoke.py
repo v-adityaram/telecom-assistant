@@ -132,6 +132,28 @@ body = r.json()
 record("voice backend", "unknown function rejected", body.get("success") is False and body.get("error") == "unknown_function",
        f"success={body.get('success')} error={body.get('error')}")
 
+# ---------------- 7. COMPLEX: LangGraph fallback for multi-domain / advisory asks ----------------
+COMPLEX_CASES = [
+    ("what are my add ons", {"BALANCE", "OFFERS"}),
+    ("am i eligible for 5g?", {"PROFILE", "DEVICE_DETAILS"}),
+    ("should I get roaming if I am going to vizag", None),  # advisory - don't pin exact tools
+    ("check my balance and tell me what offers I have", {"BALANCE", "OFFERS"}),
+]
+for msg, expected_keys in COMPLEX_CASES:
+    body, ms = chat(msg)
+    ok = body["type"] == "answer" and body["intent"] == "COMPLEX"
+    if expected_keys is not None:
+        ok = ok and set((body.get("data") or {}).keys()) == expected_keys
+    record("complex fallback", f"'{msg}'", ok,
+           f"{body['type']}/{body.get('intent')} keys={sorted((body.get('data') or {}).keys())} — {body['message'][:70]}", ms)
+
+# Single-domain short phrases that look COMPLEX-ish but should stay on the fast path.
+for msg in ["esim flag?", "sim type"]:
+    body, ms = chat(msg)
+    ok = body["type"] == "answer" and body["intent"] == "DEVICE_DETAILS"
+    record("complex fallback", f"'{msg}' stays fast-path (not COMPLEX)", ok,
+           f"{body['type']}/{body.get('intent')}", ms)
+
 r = client.get("/health")
 record("health", "GET /health", r.status_code == 200 and r.json() == {"status": "ok"}, r.text)
 

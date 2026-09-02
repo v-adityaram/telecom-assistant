@@ -3,7 +3,9 @@ import uuid
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.router.confidence import COMPLEX_INTENT
 from app.router.intent_router import route_intent
+from app.services.complex_flow import run_complex_flow
 from app.services.customer_context import get_customer_context
 from app.services.response import render_answer_message
 from app.services.session_store import PendingClarification, clear_pending, get_pending, set_pending
@@ -54,6 +56,17 @@ async def chat(request: ChatRequest) -> ChatResponse:
         )
 
     clear_pending(session_id)
+
+    if result.intent == COMPLEX_INTENT:
+        answer, fetched = await run_complex_flow(request.message, request.mobile_number)
+        return ChatResponse(
+            type="answer",
+            session_id=session_id,
+            intent=COMPLEX_INTENT,
+            message=answer,
+            data=fetched or None,
+        )
+
     customer = get_customer_context(request.mobile_number)
     tool_result = await execute_tool(result.intent, customer)
 

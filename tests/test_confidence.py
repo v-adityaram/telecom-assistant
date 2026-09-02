@@ -101,3 +101,21 @@ def test_small_talk_without_alternatives_gets_no_chips():
     result = build_router_result(raw, THRESHOLD)
 
     assert result.possible_intents == []
+
+
+def test_complex_intent_bypasses_threshold_and_clarification():
+    raw = {"intent": "COMPLEX", "confidence": 0.4}  # even a low stated confidence
+
+    result = build_router_result(raw, THRESHOLD)
+
+    assert result.intent == "COMPLEX"
+    assert result.needs_clarification is False
+    assert result.possible_intents == []
+
+
+def test_complex_intent_never_offered_as_a_clarification_chip():
+    raw = {"intent": "PROFILE", "confidence": 0.3, "possible_intents": ["COMPLEX", "OFFERS"]}
+
+    result = build_router_result(raw, THRESHOLD)
+
+    assert "COMPLEX" not in result.possible_intents

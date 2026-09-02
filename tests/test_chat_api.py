@@ -148,3 +148,28 @@ def test_mobile_number_never_sourced_from_message(monkeypatch):
 
     _, customer = execute_tool_spy.captured
     assert customer.mobile_number == MOBILE_NUMBER
+
+
+def test_complex_intent_routes_to_langgraph_fallback(monkeypatch):
+    _patch_route_intent(
+        monkeypatch,
+        RouterResult(intent="COMPLEX", confidence=0.9, needs_clarification=False),
+    )
+
+    async def fake_run_complex_flow(message, mobile_number):
+        fake_run_complex_flow.captured = (message, mobile_number)
+        return "You're eligible for 5G on both your plan and device.", {"PROFILE": {}, "DEVICE_DETAILS": {}}
+
+    monkeypatch.setattr(chat_module, "run_complex_flow", fake_run_complex_flow)
+
+    response = client.post(
+        "/api/chat", json={"message": "am I eligible for 5G", "mobile_number": MOBILE_NUMBER}
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["type"] == "answer"
+    assert body["intent"] == "COMPLEX"
+    assert body["message"] == "You're eligible for 5G on both your plan and device."
+    assert body["data"] == {"PROFILE": {}, "DEVICE_DETAILS": {}}
+    assert fake_run_complex_flow.captured == ("am I eligible for 5G", MOBILE_NUMBER)

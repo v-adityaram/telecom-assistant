@@ -106,7 +106,48 @@ so a session on any machine can pick up where the last one left off.
       of Azure entirely — useful for isolating "browser isn't capturing audio" from "Azure isn't
       responding" if voice ever seems dead again. Tested with mocks: `tests/test_realtime.py`,
       `tests/test_voice_api.py`.
-- [ ] **Phase 9 — LangGraph fallback**: not started.
+- [x] **Phase 9 — LangGraph fallback**, built 2026-09-03 in response to real gaps a user hit live:
+      questions like "what are my add-ons", "am I eligible for 5G", or "what roaming charges/offers
+      do I have" are structurally ambiguous — the field genuinely exists in two different API
+      responses (add-ons: BALANCE.addOnBalances vs OFFERS' add-on category; 5G: PROFILE's
+      serviceFlags vs DEVICE_DETAILS' capability) — and no amount of prompt-tuning the single-intent
+      classifier fixes that, because it's not a classification error, it's a single-tool-call
+      architecture being asked a question that needs two. Advisory questions ("should I get roaming
+      for my trip to Vizag") are a different problem again: not a data-fetch at all, but reasoning
+      grounded in account data.
+      `app/services/complex_flow.py` — a `langgraph` `StateGraph` (added as a dependency; installs
+      clean against the existing pins, `pip check` reports nothing broken): `plan` (LLM picks which
+      of the 5 tools are relevant, can be 0-5) -> `fetch` (calls them via `asyncio.gather`, the
+      *same* Phase 3 `execute_tool` registry chat and voice already use — no new tool code) ->
+      `answer` (LLM writes the actual answer grounded in the real fetched JSON, same trust model
+      already proven in voice: the model never sees anything but real data, but *is* allowed to
+      phrase/reason over it, unlike chat's static templates). Every node degrades to an honest
+      fallback rather than raising or guessing: a planning failure yields an empty plan (not "fetch
+      everything"), a hallucinated tool name is filtered before it ever reaches `execute_tool`, a
+      partial fetch failure marks just that lookup as an error and still answers from the rest.
+      `app/services/llm.py`'s classifier gained a 7th label, `COMPLEX` — decided in the *same*
+      single LLM call already being made, so clean single-intent queries pay zero extra latency.
+      `app/router/confidence.py`'s `COMPLEX_INTENT` bypasses the confidence threshold entirely (it's
+      a routing decision, not a tool call to gate) and is filtered out of `possible_intents` so it
+      never appears as a clarification chip. The prompt is explicit that the existing cheap
+      PROFILE-vs-OFFERS "check my plan" clarification should *not* be promoted to COMPLEX — that
+      one's a quick binary pick and works well as-is; COMPLEX is only for cases a clarification
+      genuinely can't resolve.
+      **Live-verified 2026-09-03** against the exact failing transcript: "what are my add-ons" (now
+      correctly fetches both BALANCE+OFFERS, 4/4 consistent after adding a planner calibration
+      example — first try only fetched OFFERS), "am I eligible for 5G" (PROFILE+DEVICE_DETAILS),
+      "should I get roaming to Vizag" (correctly reasons Vizag is domestic, so international roaming
+      isn't needed — genuine advice, not just data), "check my balance and offers" (both, combined).
+      "esim flag?" turned out to be a single-domain gap, not a COMPLEX one — same fix pattern as the
+      earlier SMS/plan wobbles, anchored in the classifier prompt instead (verified 5/5). Extended
+      `scripts/live_smoke.py` with these cases; full 43-check matrix passed (one unrelated,
+      pre-existing single-phrase wobble reappeared on a second run — same temperature-1 noise
+      already documented above, confirmed 8/8 on a dedicated re-run, not a regression from this
+      work).
+      **Cost of this**: COMPLEX turns take ~8-9.5s (two sequential LLM calls — plan then answer —
+      plus concurrent tool fetches) vs ~2.9s for the fast path. Worth it only because it's gated to
+      genuinely multi-domain/advisory cases; every clean single-intent query still takes the
+      original one-call path.
 - [ ] **Phase 10 — Azure VM deployment**: not started. See "Deployment notes" below — SSH from the
       original dev machine is blocked by a corporate firewall, so deployment is git-pull-on-the-VM,
       not push-from-here.
