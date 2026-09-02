@@ -84,10 +84,16 @@ so a session on any machine can pick up where the last one left off.
       rule. Voice's 5 realtime tools are zero-argument by design — mobileNumber is never a model-
       supplied parameter, same rule as chat.
       **Frontend**: `app/static/index.html`, served at `GET /` — a single dependency-free HTML/JS
-      page with a Chat panel (hits `/api/chat` directly) and a Voice panel (WebRTC straight from the
-      browser to Azure's `/realtime/calls` SDP endpoint using the ephemeral token; mic via
-      `getUserMedia`; on `response.function_call_arguments.done` it calls `/api/voice/tool` and
-      feeds the result back via a `function_call_output` conversation item). Deliberately **omits**
+      page (no framework, no web fonts, inline SVG icons), redesigned 2026-09-03 into a ChatGPT-style
+      dark layout: sidebar (New chat, account number, voice status, debug-log toggle) + **one unified
+      conversation thread** where typed messages and voice turns both render as bubbles, and a
+      single composer bar whose mic button switches it into voice mode (level meter + stop). Text
+      still goes through `/api/chat` (fast intent-router path; clarification replies render the
+      `possible_intents` as clickable chips that resolve via the same session); voice goes WebRTC
+      straight from the browser to Azure's `/realtime/calls` SDP endpoint using the ephemeral token;
+      on `response.function_call_arguments.done` it calls `/api/voice/tool` and feeds the result
+      back via a `function_call_output` conversation item. Raw realtime/RTC events go to a
+      collapsible debug drawer instead of the main thread. Deliberately **omits**
       the docs' `?webrtcfilter=on` query param — that filter's allow-listed event set does not
       include `response.function_call_arguments.done`, which would silently break tool calling.
       Also added a live mic-level meter (Web Audio `AnalyserNode`) to the Voice panel, independent

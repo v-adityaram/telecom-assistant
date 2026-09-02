@@ -3,374 +3,564 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Telecom AI Assistant (POC)</title>
+<title>Telecom Assistant</title>
 <style>
-  :root { color-scheme: light; }
+  :root {
+    color-scheme: dark;
+    --bg: #212121;
+    --sidebar: #171717;
+    --surface: #2f2f2f;
+    --surface-2: #3a3a3a;
+    --border: #3d3d3d;
+    --text: #ececec;
+    --muted: #9b9b9b;
+    --accent: #ffffff;
+    --user-bubble: #2f2f2f;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --err: #f87171;
+    --radius: 16px;
+  }
   * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
   body {
-    margin: 0; padding: 24px; background: #f4f5f7; color: #1a1a1a;
-    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    font-size: 15px; line-height: 1.5;
   }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: #666; font-size: 13px; margin-bottom: 20px; }
-  .top-bar {
-    display: flex; gap: 12px; align-items: center; margin-bottom: 20px;
-    background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 12px 16px;
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  input { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+
+  .app { display: flex; height: 100%; }
+
+  /* ---------- sidebar ---------- */
+  .sidebar {
+    width: 260px; flex-shrink: 0; background: var(--sidebar);
+    display: flex; flex-direction: column; padding: 14px 12px; gap: 6px;
+    transition: transform .2s ease;
   }
-  .top-bar label { font-size: 13px; color: #444; }
-  .top-bar input {
-    flex: 1; max-width: 260px; padding: 8px 10px; border: 1px solid #ccc;
-    border-radius: 6px; font-size: 14px;
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 6px 8px 14px; }
+  .brand .dot { width: 22px; height: 22px; border-radius: 50%; background: linear-gradient(135deg,#7dd3fc,#818cf8); }
+  .side-btn {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    padding: 9px 10px; border-radius: 10px; color: var(--text);
   }
-  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  @media (max-width: 860px) { .panels { grid-template-columns: 1fr; } }
-  .panel {
-    background: #fff; border: 1px solid #e0e0e0; border-radius: 10px;
-    padding: 16px; display: flex; flex-direction: column; height: 70vh;
+  .side-btn:hover { background: var(--surface); }
+  .side-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .section { padding: 12px 8px 4px; }
+  .section label { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+  .section input {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; outline: none;
   }
-  .panel h2 { font-size: 15px; margin: 0 0 12px; }
-  .log {
-    flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px;
-    padding: 10px; background: #fafafa; font-size: 13px; margin-bottom: 10px;
+  .section input:focus { border-color: #666; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+    padding: 4px 10px; border-radius: 999px; background: var(--surface); color: var(--muted);
   }
-  .msg { margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; max-width: 90%; }
-  .msg.user { background: #dbeafe; margin-left: auto; }
-  .msg.answer { background: #dcfce7; }
-  .msg.clarification { background: #fef9c3; }
-  .msg.error { background: #fee2e2; }
-  .msg.system { background: transparent; color: #888; font-style: italic; }
-  .msg .meta { font-size: 10px; color: #666; margin-bottom: 3px; text-transform: uppercase; }
-  .row { display: flex; gap: 8px; }
-  input[type=text] {
-    flex: 1; padding: 9px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .pill.on { color: var(--ok); } .pill.on::before { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .pill.busy { color: var(--warn); } .pill.busy::before { background: var(--warn); }
+  .pill.err { color: var(--err); } .pill.err::before { background: var(--err); }
+  .grow { flex: 1; }
+  .footer { font-size: 11px; color: var(--muted); padding: 8px; line-height: 1.4; }
+
+  /* ---------- main ---------- */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+  .topbar .title { font-weight: 600; color: var(--muted); }
+  #sidebarToggle { display: none; padding: 6px; border-radius: 8px; }
+  #sidebarToggle:hover { background: var(--surface); }
+
+  .thread { flex: 1; overflow-y: auto; padding: 0 16px; }
+  .thread-inner { max-width: 760px; margin: 0 auto; padding-bottom: 24px; }
+
+  .empty { text-align: center; padding: 18vh 0 40px; }
+  .empty h1 { font-size: 28px; font-weight: 500; margin: 0 0 24px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .chip {
+    padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border);
+    color: var(--text); font-size: 13px; background: transparent;
   }
-  button {
-    padding: 9px 14px; border: none; border-radius: 6px; background: #2563eb; color: #fff;
-    font-size: 14px; cursor: pointer;
+  .chip:hover { background: var(--surface); }
+
+  .msg { display: flex; margin: 18px 0; gap: 12px; }
+  .msg.user { justify-content: flex-end; }
+  .bubble { max-width: 80%; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user .bubble { background: var(--user-bubble); padding: 10px 16px; border-radius: 20px; }
+  .msg.assistant .bubble { padding: 4px 0; }
+  .msg.assistant .avatar {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; margin-top: 4px;
+    background: linear-gradient(135deg,#7dd3fc,#818cf8); display: grid; place-items: center;
   }
-  button:disabled { background: #aaa; cursor: not-allowed; }
-  button.stop { background: #dc2626; }
-  .status { font-size: 12px; color: #666; margin-top: 8px; }
-  .status.connected { color: #16a34a; font-weight: 600; }
-  .status.error { color: #dc2626; font-weight: 600; }
+  .msg.assistant .avatar svg { width: 15px; height: 15px; }
+  .meta { font-size: 11px; color: var(--muted); margin-bottom: 4px; display: flex; gap: 8px; align-items: center; }
+  .meta .tag { padding: 1px 8px; border-radius: 999px; background: var(--surface); }
+  .meta .tag.clar { color: var(--warn); }
+  .meta .tag.err { color: var(--err); }
+  .msg.system { justify-content: center; }
+  .msg.system .bubble { font-size: 12px; color: var(--muted); background: var(--surface); padding: 4px 12px; border-radius: 999px; }
+  .msg .chips { justify-content: flex-start; margin-top: 10px; }
+  .typing span { display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: .2s; } .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%,80%,100% { opacity: .25; } 40% { opacity: 1; } }
+
+  /* ---------- composer ---------- */
+  .composer-wrap { padding: 8px 16px 14px; }
+  .composer-inner { max-width: 760px; margin: 0 auto; }
+  .composer {
+    display: flex; align-items: center; gap: 6px; background: var(--surface);
+    border-radius: 28px; padding: 8px 8px 8px 18px; border: 1px solid transparent;
+  }
+  .composer:focus-within { border-color: #555; }
+  .composer input { flex: 1; background: transparent; border: none; outline: none; font-size: 15px; min-width: 0; }
+  .composer input::placeholder { color: var(--muted); }
+  .icon-btn { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--text); }
+  .icon-btn:hover { background: var(--surface-2); }
+  .icon-btn:disabled { opacity: .35; cursor: default; }
+  .icon-btn svg { width: 18px; height: 18px; }
+  .icon-btn.primary { background: var(--accent); color: #000; }
+  .icon-btn.primary:hover { background: #ddd; }
+  .icon-btn.danger { background: var(--err); color: #000; }
+
+  .voice-bar {
+    display: flex; align-items: center; gap: 12px; background: var(--surface);
+    border-radius: 28px; padding: 8px 8px 8px 18px;
+  }
+  .voice-bar .meter { flex: 1; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+  .voice-bar .meter > div { height: 100%; width: 0%; background: var(--ok); transition: width 60ms linear; }
+  .voice-bar .vhint { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .voice-bar .vhint.live { color: var(--ok); }
+  .disclaimer { text-align: center; font-size: 11px; color: var(--muted); margin-top: 8px; }
+
+  /* ---------- debug drawer ---------- */
+  .debug {
+    position: absolute; right: 16px; bottom: 96px; width: min(420px, 90vw); max-height: 45vh;
+    background: var(--sidebar); border: 1px solid var(--border); border-radius: 12px;
+    display: flex; flex-direction: column; overflow: hidden; z-index: 5;
+  }
+  .debug-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .debug-head button { color: var(--muted); font-size: 12px; }
+  .debug pre { margin: 0; padding: 10px 12px; overflow: auto; font-size: 11px; line-height: 1.5; color: #bdbdbd; font-family: ui-monospace, Consolas, monospace; }
+
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 9; display: none; }
+  @media (max-width: 860px) {
+    .sidebar { position: fixed; z-index: 10; height: 100%; transform: translateX(-100%); }
+    .sidebar.open { transform: translateX(0); }
+    .overlay.show { display: block; }
+    #sidebarToggle { display: grid; }
+    .bubble { max-width: 92%; }
+  }
 </style>
 </head>
 <body>
-<h1>Telecom AI Assistant — local test console</h1>
-<div class="sub">Chat and Voice both hit the same FastAPI backend and the same secure tool layer.</div>
+<div class="overlay" id="overlay"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><span class="dot"></span> Telecom Assistant</div>
+    <button class="side-btn" id="newChat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      New chat
+    </button>
+    <button class="side-btn" id="debugToggle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <span id="debugToggleLabel">Show debug log</span>
+    </button>
 
-<div class="top-bar">
-  <label for="mobileNumber">Mobile number</label>
-  <input id="mobileNumber" type="text" value="+919999900003">
-  <span style="font-size:12px;color:#999;">(sample number from the telecom POC — real auth isn't wired up yet)</span>
-</div>
-
-<div class="panels">
-  <div class="panel">
-    <h2>Chat</h2>
-    <div class="log" id="chatLog"></div>
-    <div class="row">
-      <input id="chatInput" type="text" placeholder="e.g. what is my balence" autocomplete="off">
-      <button id="chatSend">Send</button>
+    <div class="section">
+      <label for="mobileNumber">Account</label>
+      <input id="mobileNumber" type="text" value="+919999900003" spellcheck="false" placeholder="Mobile number">
+      <div class="hint">Sample POC number — real sign-in isn't wired up yet.</div>
     </div>
-  </div>
-
-  <div class="panel">
-    <h2>Voice</h2>
-    <div class="log" id="voiceLog"></div>
-    <div class="row">
-      <button id="voiceStart">Start voice session</button>
-      <button id="voiceStop" class="stop" disabled>Stop</button>
+    <div class="section">
+      <label>Voice</label>
+      <span class="pill" id="voiceState">Off</span>
     </div>
-    <div class="status" id="voiceStatus">Not connected.</div>
-    <div style="margin-top:6px;">
-      <div style="font-size:11px;color:#888;margin-bottom:3px;">Mic input level (proves the browser is actually capturing audio, independent of Azure):</div>
-      <div style="height:10px;background:#eee;border-radius:5px;overflow:hidden;">
-        <div id="micMeter" style="height:100%;width:0%;background:#16a34a;transition:width 60ms linear;"></div>
+
+    <div class="grow"></div>
+    <div class="footer">Text → intent router · Voice → realtime model.<br>Both use the same secure tool layer.</div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button id="sidebarToggle" class="icon-btn" title="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="title">Telecom Assistant</div>
+    </header>
+
+    <div class="thread" id="thread">
+      <div class="thread-inner">
+        <div class="empty" id="empty">
+          <h1>Hey! Ready to check your account?</h1>
+          <div class="chips" id="starterChips"></div>
+        </div>
+        <div id="messages"></div>
       </div>
     </div>
-    <audio id="voiceAudio" autoplay></audio>
-  </div>
+
+    <div class="composer-wrap">
+      <div class="composer-inner">
+        <div class="composer" id="composer">
+          <input id="chatInput" type="text" placeholder="Ask anything about your account" autocomplete="off">
+          <button class="icon-btn" id="voiceBtn" title="Talk instead">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+          </button>
+          <button class="icon-btn primary" id="sendBtn" title="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+        <div class="voice-bar" id="voiceBar" hidden>
+          <span class="vhint" id="voiceHint">Connecting…</span>
+          <div class="meter"><div id="micMeter"></div></div>
+          <button class="icon-btn danger" id="voiceStopBtn" title="End voice">
+            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          </button>
+        </div>
+        <div class="disclaimer">Answers come from your real telecom account data — nothing is guessed.</div>
+      </div>
+    </div>
+
+    <div class="debug" id="debug" hidden>
+      <div class="debug-head"><span>Debug log</span><button id="clearDebug">clear</button></div>
+      <pre id="debugLog"></pre>
+    </div>
+  </main>
 </div>
 
 <script>
-// ---------- shared helpers ----------
-function mobileNumber() {
-  return document.getElementById('mobileNumber').value.trim();
+// ============================================================
+// Shared state & helpers
+// ============================================================
+const $ = (id) => document.getElementById(id);
+const thread = $('thread'), messages = $('messages'), empty = $('empty');
+const chatInput = $('chatInput'), sendBtn = $('sendBtn'), voiceBtn = $('voiceBtn');
+const composer = $('composer'), voiceBar = $('voiceBar'), voiceHint = $('voiceHint'), voiceStopBtn = $('voiceStopBtn');
+const voiceState = $('voiceState'), debugEl = $('debug'), debugLog = $('debugLog');
+
+const INTENT_LABELS = {
+  PROFILE: 'My current plan / profile',
+  DEVICE_DETAILS: 'My device details',
+  BALANCE: 'My balance',
+  PURCHASE_HISTORY: 'My purchase history',
+  OFFERS: 'Available offers',
+};
+const INTENT_PHRASES = {
+  PROFILE: 'my current plan and profile',
+  DEVICE_DETAILS: 'my device details',
+  BALANCE: 'my balance',
+  PURCHASE_HISTORY: 'my purchase history',
+  OFFERS: 'the available offers',
+};
+const TOOL_LABELS = {
+  get_profile: 'profile', get_device_details: 'device details', get_balance: 'balance',
+  get_purchase_history: 'purchase history', get_offers: 'offers',
+};
+const STARTERS = ["What's my balance?", 'What offers do I have?', 'Show my device', 'What did I buy recently?'];
+
+function mobileNumber() { return $('mobileNumber').value.trim(); }
+
+function logDebug(kind, detail) {
+  const t = new Date().toLocaleTimeString([], { hour12: false });
+  debugLog.textContent += `${t}  ${kind}${detail ? '  ' + detail : ''}\n`;
+  const lines = debugLog.textContent.split('\n');
+  if (lines.length > 600) debugLog.textContent = lines.slice(-500).join('\n');
+  debugLog.scrollTop = debugLog.scrollHeight;
 }
 
-function appendMsg(logEl, type, label, text) {
-  const div = document.createElement('div');
-  div.className = 'msg ' + type;
-  if (label) {
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.textContent = label;
-    div.appendChild(meta);
+function scrollToBottom() { thread.scrollTop = thread.scrollHeight; }
+
+const ASSISTANT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>';
+
+// role: 'user' | 'assistant' | 'system'. opts: { meta, tag, tagClass, chips:[{label,onClick}] }
+function addMessage(role, text, opts = {}) {
+  empty.hidden = true;
+  const msg = document.createElement('div');
+  msg.className = 'msg ' + role;
+
+  if (role === 'assistant') {
+    const av = document.createElement('div');
+    av.className = 'avatar'; av.innerHTML = ASSISTANT_ICON;
+    msg.appendChild(av);
   }
-  const body = document.createElement('div');
-  body.textContent = text;
-  div.appendChild(body);
-  logEl.appendChild(div);
-  logEl.scrollTop = logEl.scrollHeight;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  if (opts.meta || opts.tag) {
+    const meta = document.createElement('div'); meta.className = 'meta';
+    if (opts.tag) { const t = document.createElement('span'); t.className = 'tag ' + (opts.tagClass || ''); t.textContent = opts.tag; meta.appendChild(t); }
+    if (opts.meta) { const m = document.createElement('span'); m.textContent = opts.meta; meta.appendChild(m); }
+    bubble.appendChild(meta);
+  }
+
+  const body = document.createElement('div'); body.className = 'body'; body.textContent = text;
+  bubble.appendChild(body);
+
+  if (opts.chips && opts.chips.length) {
+    const chips = document.createElement('div'); chips.className = 'chips';
+    opts.chips.forEach(({ label, onClick }) => {
+      const b = document.createElement('button'); b.className = 'chip'; b.textContent = label;
+      b.addEventListener('click', () => { chips.remove(); onClick(); });
+      chips.appendChild(b);
+    });
+    bubble.appendChild(chips);
+  }
+
+  msg.appendChild(bubble);
+  messages.appendChild(msg);
+  scrollToBottom();
+  return { el: msg, body };
 }
 
-// ---------- chat panel ----------
-const chatLog = document.getElementById('chatLog');
-const chatInput = document.getElementById('chatInput');
-const chatSend = document.getElementById('chatSend');
-let chatSessionId = null;
+function addTyping() {
+  const { el } = addMessage('assistant', '');
+  el.querySelector('.body').innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+  return el;
+}
 
-async function sendChat() {
-  const message = chatInput.value.trim();
-  if (!message) return;
-  appendMsg(chatLog, 'user', 'you', message);
+// ============================================================
+// Chat (text → intent router → secure tool → answer)
+// ============================================================
+let chatSessionId = null;
+let sending = false;
+
+async function sendChat(text) {
+  const message = (text ?? chatInput.value).trim();
+  if (!message || sending) return;
+  sending = true; sendBtn.disabled = true;
   chatInput.value = '';
-  chatSend.disabled = true;
+  addMessage('user', message);
+  const typing = addTyping();
 
   try {
     const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message,
-        mobile_number: mobileNumber(),
-        session_id: chatSessionId,
-      }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, mobile_number: mobileNumber(), session_id: chatSessionId }),
     });
     const body = await res.json();
+    typing.remove();
     chatSessionId = body.session_id || chatSessionId;
+    logDebug('chat', `${body.type} intent=${body.intent ?? '-'}`);
 
     if (body.type === 'clarification') {
-      appendMsg(chatLog, 'clarification', 'clarification', body.message);
+      const chips = (body.possible_intents || []).map((i) => ({
+        label: INTENT_LABELS[i] || i,
+        onClick: () => sendChat(INTENT_PHRASES[i] || i),
+      }));
+      addMessage('assistant', body.message, { tag: 'needs a bit more', tagClass: 'clar', chips });
     } else if (body.type === 'error') {
-      appendMsg(chatLog, 'error', 'error · ' + (body.intent || ''), body.message);
+      addMessage('assistant', body.message, { tag: 'couldn’t fetch', tagClass: 'err' });
     } else {
-      appendMsg(chatLog, 'answer', 'answer · ' + (body.intent || ''), body.message);
+      addMessage('assistant', body.message, { meta: (body.intent || '').toLowerCase().replace('_', ' ') });
     }
   } catch (err) {
-    appendMsg(chatLog, 'error', 'error', 'Request failed: ' + err.message);
+    typing.remove();
+    addMessage('assistant', 'Request failed: ' + err.message, { tag: 'error', tagClass: 'err' });
   } finally {
-    chatSend.disabled = false;
-    chatInput.focus();
+    sending = false; sendBtn.disabled = false; chatInput.focus();
   }
 }
 
-chatSend.addEventListener('click', sendChat);
+sendBtn.addEventListener('click', () => sendChat());
 chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
 
-// ---------- voice panel ----------
-const voiceLog = document.getElementById('voiceLog');
-const voiceStart = document.getElementById('voiceStart');
-const voiceStop = document.getElementById('voiceStop');
-const voiceStatus = document.getElementById('voiceStatus');
-const voiceAudio = document.getElementById('voiceAudio');
+STARTERS.forEach((s) => {
+  const b = document.createElement('button'); b.className = 'chip'; b.textContent = s;
+  b.addEventListener('click', () => sendChat(s));
+  $('starterChips').appendChild(b);
+});
 
-let peerConnection = null;
-let dataChannel = null;
-let micAudioContext = null;
-let micMeterRafId = null;
+// ============================================================
+// Voice (WebRTC → realtime model → /api/voice/tool → same tool layer)
+// ============================================================
+let peerConnection = null, dataChannel = null, micStream = null;
+let micAudioContext = null, micMeterRafId = null;
+let pendingVoiceUserBubble = null;
 
-function setVoiceStatus(text, cls) {
-  voiceStatus.textContent = text;
-  voiceStatus.className = 'status' + (cls ? ' ' + cls : '');
+function setVoiceUI(state, hint) {
+  // state: 'off' | 'connecting' | 'on' | 'error'
+  const on = state !== 'off';
+  composer.hidden = on;
+  voiceBar.hidden = !on;
+  voiceState.className = 'pill ' + (state === 'on' ? 'on' : state === 'connecting' ? 'busy' : state === 'error' ? 'err' : '');
+  voiceState.textContent = state === 'off' ? 'Off' : state === 'connecting' ? 'Connecting' : state === 'on' ? 'Live' : 'Error';
+  if (hint !== undefined) { voiceHint.textContent = hint; voiceHint.className = 'vhint' + (state === 'on' ? ' live' : ''); }
 }
 
-// Independent of Azure entirely: proves whether the browser is actually
-// capturing non-silent audio from the mic when you talk.
-function startMicMeter(micStream) {
+function startMicMeter(stream) {
   micAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-  const source = micAudioContext.createMediaStreamSource(micStream);
-  const analyser = micAudioContext.createAnalyser();
-  analyser.fftSize = 512;
+  const source = micAudioContext.createMediaStreamSource(stream);
+  const analyser = micAudioContext.createAnalyser(); analyser.fftSize = 512;
   source.connect(analyser);
-
   const data = new Uint8Array(analyser.frequencyBinCount);
-  const meterEl = document.getElementById('micMeter');
-
-  function tick() {
+  const meterEl = $('micMeter');
+  (function tick() {
     analyser.getByteTimeDomainData(data);
-    let sumSquares = 0;
-    for (let i = 0; i < data.length; i++) {
-      const v = (data[i] - 128) / 128;
-      sumSquares += v * v;
-    }
-    const rms = Math.sqrt(sumSquares / data.length);
-    meterEl.style.width = Math.min(100, Math.round(rms * 400)) + '%';
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
+    meterEl.style.width = Math.min(100, Math.round(Math.sqrt(sum / data.length) * 400)) + '%';
     micMeterRafId = requestAnimationFrame(tick);
-  }
-  tick();
+  })();
 }
 
 function stopMicMeter() {
   if (micMeterRafId) cancelAnimationFrame(micMeterRafId);
   if (micAudioContext) micAudioContext.close();
-  micMeterRafId = null;
-  micAudioContext = null;
-  const meterEl = document.getElementById('micMeter');
-  if (meterEl) meterEl.style.width = '0%';
+  micMeterRafId = null; micAudioContext = null;
+  $('micMeter').style.width = '0%';
 }
 
 async function startVoice() {
-  voiceStart.disabled = true;
-  setVoiceStatus('Requesting session...');
-
+  if (peerConnection) return;
+  setVoiceUI('connecting', 'Starting session…');
   try {
     const sessionRes = await fetch('/api/voice/session', { method: 'POST' });
     const session = await sessionRes.json();
-    if (!session.success) {
-      setVoiceStatus('Failed to start session: ' + session.error, 'error');
-      voiceStart.disabled = false;
-      return;
-    }
+    if (!session.success) throw new Error(session.error || 'session failed');
 
     peerConnection = new RTCPeerConnection();
+    const remoteAudio = new Audio(); remoteAudio.autoplay = true;
+    peerConnection.ontrack = (e) => { remoteAudio.srcObject = e.streams[0]; logDebug('rtc', 'remote audio track'); };
+    peerConnection.onconnectionstatechange = () => logDebug('rtc', 'connection ' + peerConnection.connectionState);
+    peerConnection.oniceconnectionstatechange = () => logDebug('rtc', 'ice ' + peerConnection.iceConnectionState);
 
-    peerConnection.ontrack = (event) => {
-      voiceAudio.srcObject = event.streams[0];
-      appendMsg(voiceLog, 'system', '', 'Remote audio track received.');
-    };
-    peerConnection.onconnectionstatechange = () => {
-      appendMsg(voiceLog, 'system', 'connection', peerConnection.connectionState);
-    };
-    peerConnection.oniceconnectionstatechange = () => {
-      appendMsg(voiceLog, 'system', 'ice', peerConnection.iceConnectionState);
-    };
-
-    setVoiceStatus('Requesting microphone access...');
-    const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const micTrack = mic.getAudioTracks()[0];
-    peerConnection.addTrack(micTrack);
-    appendMsg(
-      voiceLog, 'system', 'mic track',
-      `${micTrack.label || '(unnamed device)'} — enabled=${micTrack.enabled} muted=${micTrack.muted} readyState=${micTrack.readyState}`
-    );
-    startMicMeter(mic);
+    setVoiceUI('connecting', 'Requesting microphone…');
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const track = micStream.getAudioTracks()[0];
+    peerConnection.addTrack(track);
+    logDebug('mic', `${track.label || 'unnamed'} enabled=${track.enabled} muted=${track.muted}`);
+    startMicMeter(micStream);
 
     dataChannel = peerConnection.createDataChannel('realtime-channel');
-
     dataChannel.addEventListener('open', () => {
-      setVoiceStatus('Connected — start talking.', 'connected');
-      appendMsg(voiceLog, 'system', '', 'Session started. Speak into your microphone.');
-      voiceStop.disabled = false;
+      setVoiceUI('on', 'Listening — just talk');
+      addMessage('system', '🎙 Voice on');
     });
+    dataChannel.addEventListener('message', (e) => onRealtimeEvent(JSON.parse(e.data)));
+    dataChannel.addEventListener('close', () => { if (peerConnection) stopVoice(); });
 
-    dataChannel.addEventListener('message', (event) => onRealtimeEvent(JSON.parse(event.data)));
-    dataChannel.addEventListener('close', () => setVoiceStatus('Disconnected.'));
-
-    // Do NOT use ?webrtcfilter=on here — it suppresses the
-    // response.function_call_arguments.done event our tool-calling loop needs.
+    // No ?webrtcfilter=on: that filter drops the function-call events tool calling needs.
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
-
     const sdpRes = await fetch(session.realtime_url, {
-      method: 'POST',
-      body: offer.sdp,
-      headers: {
-        Authorization: `Bearer ${session.client_secret}`,
-        'Content-Type': 'application/sdp',
-      },
+      method: 'POST', body: offer.sdp,
+      headers: { Authorization: `Bearer ${session.client_secret}`, 'Content-Type': 'application/sdp' },
     });
-    if (!sdpRes.ok) {
-      setVoiceStatus('SDP exchange failed: ' + sdpRes.status, 'error');
-      voiceStart.disabled = false;
-      return;
-    }
-    const answerSdp = await sdpRes.text();
-    await peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+    if (!sdpRes.ok) throw new Error('SDP exchange failed: ' + sdpRes.status);
+    await peerConnection.setRemoteDescription({ type: 'answer', sdp: await sdpRes.text() });
   } catch (err) {
-    setVoiceStatus('Error: ' + err.message, 'error');
-    stopMicMeter();
-    voiceStart.disabled = false;
+    logDebug('voice', 'error ' + err.message);
+    addMessage('assistant', 'Couldn’t start voice: ' + err.message, { tag: 'voice error', tagClass: 'err' });
+    teardownVoice();
+    setVoiceUI('off');
   }
 }
 
-function stopVoice() {
+function teardownVoice() {
   stopMicMeter();
-  if (dataChannel) dataChannel.close();
-  if (peerConnection) peerConnection.close();
-  dataChannel = null;
-  peerConnection = null;
-  voiceStart.disabled = false;
-  voiceStop.disabled = true;
-  setVoiceStatus('Stopped.');
-  appendMsg(voiceLog, 'system', '', 'Session stopped.');
+  if (dataChannel) { try { dataChannel.close(); } catch (_) {} }
+  if (peerConnection) { try { peerConnection.close(); } catch (_) {} }
+  if (micStream) micStream.getTracks().forEach((t) => t.stop());
+  dataChannel = null; peerConnection = null; micStream = null; pendingVoiceUserBubble = null;
 }
 
-voiceStart.addEventListener('click', startVoice);
-voiceStop.addEventListener('click', stopVoice);
+function stopVoice() {
+  teardownVoice();
+  setVoiceUI('off');
+  addMessage('system', 'Voice off');
+  chatInput.focus();
+}
 
-// Event names vary slightly across API doc revisions, so we listen for both
-// variants where docs disagree rather than guess which one this deployment uses.
-const DELTA_EVENT_SUFFIXES = ['.delta'];
-const LIFECYCLE_EVENTS = new Set([
-  'session.created', 'conversation.created', 'conversation.item.created',
-  'response.created', 'response.done', 'input_audio_buffer.speech_started',
-  'input_audio_buffer.speech_stopped', 'input_audio_buffer.committed',
-]);
+voiceBtn.addEventListener('click', startVoice);
+voiceStopBtn.addEventListener('click', stopVoice);
 
 async function onRealtimeEvent(evt) {
-  console.log('realtime event:', evt.type, evt);
-
+  if (!evt.type.endsWith('.delta')) logDebug('evt', evt.type);
   switch (evt.type) {
+    case 'input_audio_buffer.speech_started':
+      voiceHint.textContent = 'Hearing you…';
+      return;
+    case 'input_audio_buffer.speech_stopped':
+      voiceHint.textContent = 'Thinking…';
+      // Placeholder for what you said; replaced by the transcript if one is configured.
+      pendingVoiceUserBubble = addMessage('user', '🎤 Voice message', { }).body;
+      return;
     case 'conversation.item.input_audio_transcription.completed':
     case 'conversation.item.audio_transcription.completed':
-      appendMsg(voiceLog, 'user', 'you (transcribed)', evt.transcript || '');
+      if (evt.transcript) {
+        if (pendingVoiceUserBubble) { pendingVoiceUserBubble.textContent = evt.transcript; pendingVoiceUserBubble = null; }
+        else addMessage('user', evt.transcript);
+      }
+      return;
+    case 'output_audio_buffer.started':
+      voiceHint.textContent = 'Speaking…';
+      return;
+    case 'output_audio_buffer.stopped':
+      voiceHint.textContent = 'Listening — just talk';
       return;
     case 'response.output_audio_transcript.done':
     case 'response.audio_transcript.done':
-      appendMsg(voiceLog, 'answer', 'assistant', evt.transcript || '');
+      if (evt.transcript) addMessage('assistant', evt.transcript, { meta: '🔊 voice' });
+      pendingVoiceUserBubble = null;
       return;
     case 'response.function_call_arguments.done':
       await handleFunctionCall(evt);
       return;
     case 'error':
-      appendMsg(voiceLog, 'error', 'error', evt.error?.message || JSON.stringify(evt));
-      return;
-    case 'input_audio_buffer.speech_started':
-      appendMsg(voiceLog, 'system', '', '🎤 heard you speaking...');
-      return;
-    case 'input_audio_buffer.speech_stopped':
-      appendMsg(voiceLog, 'system', '', '🎤 stopped — waiting for a response...');
+      addMessage('assistant', evt.error?.message || JSON.stringify(evt), { tag: 'voice error', tagClass: 'err' });
       return;
   }
-
-  if (DELTA_EVENT_SUFFIXES.some((suffix) => evt.type.endsWith(suffix))) return; // too noisy for the visible log
-  if (LIFECYCLE_EVENTS.has(evt.type)) {
-    appendMsg(voiceLog, 'system', 'evt', evt.type);
-    return;
-  }
-  // Anything else unrecognized: still surface it, compactly, so nothing is silently dropped.
-  appendMsg(voiceLog, 'system', 'evt', evt.type);
 }
 
 async function handleFunctionCall(evt) {
-  appendMsg(voiceLog, 'system', 'tool call', evt.name);
-
+  addMessage('system', `Looking up ${TOOL_LABELS[evt.name] || evt.name}…`);
   let result;
   try {
     const res = await fetch('/api/voice/tool', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ function_name: evt.name, mobile_number: mobileNumber() }),
     });
     result = await res.json();
   } catch (err) {
     result = { success: false, error: 'request_failed: ' + err.message };
   }
-
+  logDebug('tool', `${evt.name} success=${result.success}`);
   const output = result.success ? result.data : { error: result.error || 'tool_error' };
-
+  if (!dataChannel) return;
   dataChannel.send(JSON.stringify({
     type: 'conversation.item.create',
-    item: {
-      type: 'function_call_output',
-      call_id: evt.call_id,
-      output: JSON.stringify(output),
-    },
+    item: { type: 'function_call_output', call_id: evt.call_id, output: JSON.stringify(output) },
   }));
   dataChannel.send(JSON.stringify({ type: 'response.create' }));
 }
+
+// ============================================================
+// Sidebar / layout
+// ============================================================
+$('newChat').addEventListener('click', () => {
+  if (peerConnection) stopVoice();
+  chatSessionId = null;
+  messages.innerHTML = '';
+  empty.hidden = false;
+  closeSidebar();
+  chatInput.focus();
+});
+
+$('debugToggle').addEventListener('click', () => {
+  debugEl.hidden = !debugEl.hidden;
+  $('debugToggleLabel').textContent = debugEl.hidden ? 'Show debug log' : 'Hide debug log';
+});
+$('clearDebug').addEventListener('click', () => { debugLog.textContent = ''; });
+
+const sidebar = $('sidebar'), overlay = $('overlay');
+function closeSidebar() { sidebar.classList.remove('open'); overlay.classList.remove('show'); }
+$('sidebarToggle').addEventListener('click', () => { sidebar.classList.toggle('open'); overlay.classList.toggle('show'); });
+overlay.addEventListener('click', closeSidebar);
+
+chatInput.focus();
 </script>
 </body>
 </html>
