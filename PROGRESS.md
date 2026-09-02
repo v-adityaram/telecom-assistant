@@ -15,8 +15,13 @@ so a session on any machine can pick up where the last one left off.
       `CustomerContext` — real auth lands in Phase 11). Verified live against the real Azure Function
       API using the sample number from the Postman collection (`+919999900003`) — all 5 endpoints
       return 200.
-- [ ] **Phase 3 — Secure tool layer** (allow-list intent → function): not started. Next up.
-- [ ] **Phase 4 — Intent router**: not started. **Blocked on a decision** — see "Open decisions" below.
+- [x] **Phase 3 — Secure tool layer**: `app/tools/registry.py` — explicit `TOOL_REGISTRY` mapping
+      intent strings (`PROFILE`, `DEVICE_DETAILS`, `BALANCE`, `PURCHASE_HISTORY`, `OFFERS`) to their
+      tool functions, plus `execute_tool(intent, customer)` that rejects anything not in the
+      allow-list (raises `UnknownIntentError`) — no arbitrary URLs/functions ever reach a call site.
+      Tested in `tests/test_registry.py` (dispatch per intent, rejects `UNKNOWN`, rejects an
+      arbitrary string).
+- [ ] **Phase 4 — Intent router**: not started. Next up. LLM backend decision below is now resolved.
 - [ ] **Phase 5 — Confidence + clarification**: not started.
 - [ ] **Phase 6 — Chat endpoint** (`POST /api/chat`): not started.
 - [ ] **Phase 7 — Tests + latency optimization**: ongoing per-phase, dedicated pass not started.
@@ -26,12 +31,11 @@ so a session on any machine can pick up where the last one left off.
       original dev machine is blocked by a corporate firewall, so deployment is git-pull-on-the-VM,
       not push-from-here.
 
-## Open decisions (need input before continuing)
+## Open decisions
 
-1. **LLM backend for the router/chat (blocks Phase 4).** The plan's `.env.example` assumes Azure
-   OpenAI (`AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY`), but this was never confirmed — could
-   also be Anthropic Claude. Whoever picks this up next should confirm with the user and fill in
-   `.env` accordingly (never commit real keys).
+1. ~~LLM backend for the router/chat~~ — **Resolved 2026-09-02: Azure OpenAI**, matching the
+   existing `.env.example` (`AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY`). Phase 4
+   (`app/services/llm.py` + intent router) should build against the Azure OpenAI SDK.
 2. GitHub repo: `https://github.com/v-adityaram/telecom-assistant` (already set as `origin`, `main`
    branch). Auth is via a GitHub PAT stored in this machine's Git Credential Manager — **that
    credential does not travel with the repo**; a new machine needs its own token (see README).
