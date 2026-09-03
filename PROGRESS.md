@@ -6,6 +6,21 @@ so a session on any machine can pick up where the last one left off.
 
 ## Where things stand (2026-09-03, updated)
 
+**Update 7 (handoff — this session is moving to a different laptop):** `REALTIME_VAD_THRESHOLD`
+was pushed to `0.7` (Update 6), tested live, **still not enough** — loud background noise still
+triggered false utterances. Escalated to **`0.9`**, set directly in the VM's `.env` via `nano` over
+Serial Console (`sudo systemctl restart telecom-assistant` to apply) — **this value is NOT in git**,
+`.env` is gitignored by design (never commit secrets/config), so `deploy/setup_vm.sh` will never
+touch or overwrite it. If a future redeploy seems to "lose" this tuning, it hasn't — check the VM's
+actual `.env`, not `.env.example`'s `0.7` default, before assuming something regressed. **Result of
+the `0.9` test was not yet reported back when this session ended** — that's the immediate next thing
+to check with the user. If `0.9` still isn't enough, VAD-threshold-tuning alone is very likely not
+the answer and the mic/environment itself (a real noise-cancelling headset, not laptop speakers/mic)
+should be tried before adding more software levers. Two substantial architecture discussions from
+this session exist ONLY in chat, not in any code yet — see **Open architecture discussions** below;
+read that section before starting the Cosmos DB / conversation-memory work if the user brings it up
+again, since real conclusions were already reached about the *design*, not just "should we."
+
 **Update 6:** the rapid-language-switching in Update 5's log turned out to be the reporter
 deliberately testing the language-switch feature, not a symptom — retracted that part of the
 diagnosis. The real remaining complaint is background noise (confirmed loud, confirmed real noise
@@ -124,10 +139,14 @@ cert, accept the warning once). Redeploy: `cd ~/telecom-assistant && git pull &&
 - `gpt-live-transcribe`'s default quota is 10 requests/min; very rapid back-to-back voice turns could
   hit it (raise the quota in the portal if it shows up as a rate-limit `.failed` code).
 
-**If picking this up fresh, read in this order:** this section → the Phase 8 (Realtime Voice) entry
-below, which has the most hard-won detail (Azure quirks that cost real debugging time — mint-time
-transcription failing, session.update replacing not merging, the language-switching redesign) →
-the Phase 9/scope-aware entries if touching chat → `deploy/` if touching infrastructure.
+**If picking this up fresh, read in this order:** the numbered Updates above this block (newest
+first — Update 7 is the actual current state and says what's still pending) → **Open architecture
+discussions** further below (Cosmos DB / conversation memory, and Realtime API vs Voice Live API —
+real design decisions already reached in a prior chat, not yet built) → this section → the Phase 8
+(Realtime Voice) entry below, which has the most hard-won detail (Azure quirks that cost real
+debugging time — mint-time transcription failing, session.update replacing not merging, the
+language-switching redesign) → the Phase 9/scope-aware entries if touching chat → `deploy/` if
+touching infrastructure.
 
 ## Phase status
 
@@ -409,6 +428,72 @@ the Phase 9/scope-aware entries if touching chat → `deploy/` if touching infra
       tool calls, security checks. Chat latency from the VM averages ~3.8s vs ~2.9s locally — it's
       farther from the model endpoint; nothing to fix.
 
+## Open architecture discussions (decided in chat, not yet built — read before acting on either)
+
+**1. Conversation memory + a ChatGPT-style "past chats" sidebar, per mobile number.**
+Started as "does the LLM remember earlier turns" (answer: **no** — every LLM call site, chat router
+included, sends only the system prompt + the *current* message, no history array; confirmed by
+reading `llm.py`, `answer_synthesis.py`, `complex_flow.py` directly). The user then asked for
+something bigger: a ChatGPT-style sidebar of past conversations, scoped per mobile number, using a
+dropdown of demo numbers as a stand-in "login" (real auth is a different team's job, out of scope
+here — treat a selected number as if it were an authenticated identity for this purpose). Points
+actually settled, not just floated:
+- **Key conversations by `session_id`, not `mobile_number`, for anything session-scoped** (e.g.
+  short-term LLM context within one active chat) — keying by number risks two different
+  browsers/devices silently sharing context if they pick the same demo number. But for the
+  *sidebar* feature specifically, the user deliberately wants number-scoped history (that's the
+  point of treating the dropdown as a login) — accepted with one known, acceptable limitation: two
+  people demoing with the same test number will see each other's history, same as two people
+  sharing one login would. Goes away once real auth lands.
+  A **dropdown of a fixed set of demo numbers** (replacing the current free-text Account field) was
+  agreed as the mechanism — not yet built.
+- **Azure OpenAI's Responses API (`conversation`/`previous_response_id`) was considered and is the
+  right tool for LLM-side memory specifically** (server-side history, no growing list to manage on
+  the 1 GB VM, same ID concept as the "conversation id" the user saw in Azure AI Foundry Agent
+  traces) — but it does NOT give a durable, queryable copy of transcripts you own; it's Azure's
+  internal store, not a substitute for real persistence. Migrating chat's 3 LLM call sites from
+  `chat.completions.create()` to `responses.create()` is a real API-surface change (different param
+  names, different output shape) — not started, would need re-verifying the already-tuned
+  intent-classification behavior afterward.
+- **Cosmos DB was requested, pushed back on hard, then reconsidered once the user gave a real
+  reason** (the pattern here will be reused at scale elsewhere, not just this POC — a legitimate
+  basis to invest in the architecture now rather than defer it). Landed position: **yes, appropriate
+  given that stated reason** — partition key `/mobileNumber` (matches the actual access pattern,
+  keeps reads/writes in Cosmos's fast single-partition path), **one document per conversation**
+  (metadata + embedded message array — avoids a separate messages container, avoids joins, minimal
+  RU cost), free tier (1000 RU/s + 25GB, one account per subscription) very likely covers this POC's
+  entire load. **Not started** — nothing in `requirements.txt`, no `azure-cosmos` code, no container
+  created. What to ask the admin for (given to the user verbatim, worth reusing if this comes up
+  again): an Azure Cosmos DB account, API "Azure Cosmos DB for NoSQL", same resource group as the
+  VM, Free Tier if the subscription hasn't used its one free account elsewhere (else Serverless),
+  database `telecom-assistant`, container `conversations`, partition key `/mobileNumber`, plus
+  **Contributor** role on the resource for the user, and the connection string (goes in `.env`,
+  never committed — same pattern as every other secret in this project).
+- If this gets picked up: build the dropdown + `session_id`-scoped short-term memory first (small,
+  self-contained, no new infra), Cosmos DB persistence as a distinct second step once the account
+  exists.
+
+**2. Azure OpenAI Realtime API (current) vs. Azure AI Voice Live API (a different Microsoft
+product, not what this app uses).** The team apparently said Voice Live API "sounds more human."
+Both are real, genuinely different products — Voice Live API is built on Azure AI Speech (separate
+STT/TTS pipeline, historically, behind a unified session API, plus extras like built-in noise
+suppression and possibly avatar/custom-voice support) vs. this app's native end-to-end
+speech-to-speech Realtime API. Two distinct, real reasons "sounds more human" could be true point in
+different directions: Azure's neural TTS voices have a strong reputation for natural *timbre*
+independent of any LLM (points toward Voice Live API), while native speech-to-speech avoids losing
+tone/emotion/hesitation through a text intermediate step, which is the traditional argument for more
+natural *conversational* behavior (points toward Realtime API). Genuinely relevant to this specific
+project, more than the general "sounds human" framing: **Azure Speech has invested heavily in
+Indian-language quality** (Hindi/Telugu/Tamil/Kannada) specifically, which is exactly the hard part
+this build has already spent real effort on (see Phase 8's language-switching work above) — that's
+a more concrete reason to evaluate Voice Live API than a vague naturalness impression.
+**Recommendation given, not yet acted on**: do NOT switch on secondhand impressions. Test both
+live, side by side, in Azure AI Foundry's playgrounds, with real Hindi/Telugu/Tamil/Kannada phrases
+relevant to this bot, before deciding. A real switch would be a genuine migration (different
+session/auth setup) and risks having to re-solve some of the hard-won Realtime API quirks already
+documented in Phase 8 above (transcription timing, session.update replace-not-merge, the
+language-switch redesign) in a new form, since they may not carry over to a different architecture.
+
 ## Open decisions
 
 1. ~~LLM backend for the router/chat~~ — **Resolved 2026-09-02: Azure OpenAI**, matching the
@@ -456,7 +541,10 @@ the Phase 9/scope-aware entries if touching chat → `deploy/` if touching infra
 
 ## Deployment notes (for Phase 10, when we get there)
 
-- Target VM: Azure 1 GB Ubuntu, public IP `104.211.224.38`, user `azureuser`.
+- Target VM: Azure 1 GB Ubuntu, public IP `104.211.224.38`, user `azureuser`. **Canonical URL is
+  now `https://104-211-224-38.sslip.io/`** (real Let's Encrypt cert, see Update 4) — the raw IP
+  still works but 301-redirects to that domain and shows a cert warning first if hit directly over
+  https (see Update 4's nginx changes for why that one warning is unavoidable).
 - **Outbound SSH is machine/network-dependent, not VM-side.** The machine used to build Phase 1–2
   sat behind a corporate network that blocked outbound port 22 entirely (confirmed against both the
   VM and `github.com:22`). Re-tested from a different machine on 2026-09-03: port 22 is open and a
@@ -472,6 +560,10 @@ the Phase 9/scope-aware entries if touching chat → `deploy/` if touching infra
   untouched. Access facts: the GitHub repo is **public** (clone needs no token); `azureuser`'s
   `sudo` **requires the password** (no NOPASSWD), so scripted deploys pipe it to `sudo -S`.
   Service/logs: `systemctl status telecom-assistant`, `journalctl -u telecom-assistant -f`.
+  **`.env` on the VM currently has a manual override not reflected anywhere in git**:
+  `REALTIME_VAD_THRESHOLD=0.9` (see Update 7) — `setup_vm.sh` never touches `.env`, so this survives
+  redeploys, but check the VM's actual `.env` before assuming voice behavior matches
+  `.env.example`'s documented default.
 - Fallback workaround (if SSH is blocked from wherever you're building): build and test everything
   locally, push to GitHub, then `git pull` directly on the VM via Azure Portal browser SSH/Serial
   Console instead of pushing from the dev machine.
