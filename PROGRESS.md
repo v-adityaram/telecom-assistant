@@ -159,7 +159,14 @@ so a session on any machine can pick up where the last one left off.
         `response.done`), and a 2.5s fallback timer answers even if the transcript never comes.
         Cost: ~1s extra per voice turn. Numbers (amounts, MB, dates, IMEI digits) are always spoken
         in English regardless of language, per user request. Without transcription configured none
-        of this engages and the server auto-responds as before.
+        of this engages and the server auto-responds as before. Live test after: switches
+        Hindi→Telugu→Hindi all landed in the right language; the "continue in X?" question was
+        asked on 1 of 3 switches, so that instruction is now phrased as mandatory.
+      - **Data honesty (2026-09-03)**: asked "what's my name", the model sometimes said "not in your
+        account" (true — the profile API has no name field) and sometimes "can't share it for
+        privacy/security" (invented — no such policy exists). The voice prompt now lists exactly
+        what the profile contains and says absent data must be reported as "not available in what I
+        can see", never as a withheld/policy matter, and never by asking the caller for their name.
 - [x] **Phase 9 — LangGraph fallback**, built 2026-09-03 in response to real gaps a user hit live:
       questions like "what are my add-ons", "am I eligible for 5G", or "what roaming charges/offers
       do I have" are structurally ambiguous — the field genuinely exists in two different API

@@ -581,14 +581,17 @@ const SCRIPT_RANGES = [
   ['Hindi',     /[؀-ۿ]/g],   // Arabic script: the transcriber sometimes renders spoken Hindi/Urdu this way
   ['English',   /[A-Za-z]/g],
 ];
-function detectLanguage(text) {
+// `established`: whether a session language already exists. Before one does,
+// be lenient — "Hello." should set English rather than leave the model to
+// pick; afterwards, fillers ("Yeah.", "ok", "हाँ") must not flip it.
+function detectLanguage(text, established) {
   let best = null, bestCount = 0;
   for (const [lang, re] of SCRIPT_RANGES) {
     const n = (text.match(re) || []).length;
     if (n > bestCount) { best = lang; bestCount = n; }
   }
   if (!best) return null;
-  // Fillers ("Yeah.", "ok", "हाँ") must not flip the session language.
+  if (!established) return bestCount >= 4 ? best : null;
   if (best === 'English') {
     const words = text.trim().split(/\s+/).filter(Boolean).length;
     return (words >= 2 || bestCount >= 8) ? best : null;
@@ -615,7 +618,7 @@ function onUtteranceCommitted() {
 }
 function onCallerTranscript(transcript) {
   if (!manualTurns() || !awaitingTranscript) return;
-  triggerResponse(detectLanguage(transcript || ''));
+  triggerResponse(detectLanguage(transcript || '', !!voiceLang));
 }
 function languageDirective(lang) {
   const numbers = 'Say every number, amount, date, IMEI and ID in English, whatever the sentence language.';
@@ -624,7 +627,7 @@ function languageDirective(lang) {
     voiceLang = lang;
     logDebug('voice', `language switch ${prev} -> ${lang}`);
     return `CURRENT CALLER LANGUAGE: ${lang}. The caller just switched from ${prev} to ${lang}. ` +
-      `Answer this message in ${lang}, then add one short question in ${lang} asking whether to continue in ${lang} from now on. ` +
+      `Answer this message in ${lang}. You MUST end the reply with one short question, in ${lang}, asking whether to continue in ${lang} from now on — do not skip it. ` +
       `Use ${lang} from the next turn unless they switch again. ${numbers}`;
   }
   if (lang && !voiceLang) { voiceLang = lang; logDebug('voice', 'language detected: ' + lang); }
