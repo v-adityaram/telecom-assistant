@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # common case, and the one background noise reports have come from),
     # "near_field" for a headset/earbuds mic close to the mouth.
     realtime_noise_reduction_mode: str = "far_field"
+    # server_vad sensitivity: 0.0-1.0, higher = requires louder/clearer audio
+    # before treating it as speech. Raised from the API's 0.5 default after
+    # live testing in a loud environment still triggered on background noise.
+    # Configurable (not hardcoded) since this needs real-environment tuning.
+    realtime_vad_threshold: float = 0.7
 
     telecom_api_base_url: str = ""
     telecom_api_key: str = ""

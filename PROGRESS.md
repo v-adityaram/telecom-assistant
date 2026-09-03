@@ -6,6 +6,18 @@ so a session on any machine can pick up where the last one left off.
 
 ## Where things stand (2026-09-03, updated)
 
+**Update 6:** the rapid-language-switching in Update 5's log turned out to be the reporter
+deliberately testing the language-switch feature, not a symptom — retracted that part of the
+diagnosis. The real remaining complaint is background noise (confirmed loud, confirmed real noise
+not a misread) still triggering false utterances even with `noise_reduction` + STUN + the 750ms
+`silence_duration_ms`. Added `REALTIME_VAD_THRESHOLD` (`app/config.py`, wired into
+`_session_config()` in `realtime.py`) — server_vad's `threshold` was hardcoded at the API's `0.5`
+default, which is moderate sensitivity, clearly not enough for a loud environment. Now configurable
+via `.env`, defaulted to `0.7`. Made configurable rather than hardcoded (unlike the `750ms` change)
+specifically because this needs real-environment tuning that will likely take more than one pass —
+raise it further via `.env` + `sudo systemctl restart telecom-assistant` (no redeploy needed) if
+still too sensitive; lower it if genuine quieter speech starts getting missed. Not yet retested live.
+
 **Update 5:** `noise_reduction` + STUN (Update 3) were deployed and retested live — did NOT fix it.
 A real voice session still showed constant false triggers: rapid language-switching (English ->
 Telugu -> Malayalam -> Telugu -> Hindi -> English inside two minutes), garbled multi-script

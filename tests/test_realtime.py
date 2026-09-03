@@ -153,6 +153,26 @@ async def test_noise_reduction_is_sent_at_mint_and_post_connect(monkeypatch):
     assert update_input["noise_reduction"] == {"type": "near_field"}
 
 
+@pytest.mark.asyncio
+async def test_vad_threshold_is_configurable(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "realtime_vad_threshold", 0.8)
+
+    captured = {}
+
+    class CapturingClient(FakeAsyncClient):
+        async def post(self, url, json=None, headers=None):
+            captured["payload"] = json
+            return await super().post(url, json=json, headers=headers)
+
+    fake_client = CapturingClient(response=FakeResponse(200, {"value": "tok"}))
+    monkeypatch.setattr(realtime.httpx, "AsyncClient", lambda **kwargs: fake_client)
+
+    await realtime.create_realtime_session()
+
+    assert captured["payload"]["session"]["audio"]["input"]["turn_detection"]["threshold"] == 0.8
+
+
 def test_function_name_to_intent_matches_tool_registry():
     from app.tools.registry import TOOL_REGISTRY
 
