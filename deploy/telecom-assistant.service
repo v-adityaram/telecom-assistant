@@ -1,0 +1,21 @@
+[Unit]
+Description=Telecom AI Assistant (FastAPI / uvicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=__APP_USER__
+Group=__APP_USER__
+WorkingDirectory=__APP_DIR__
+# pydantic-settings reads .env from the working directory; nothing is baked
+# into this unit, so rotating a key is: edit .env, restart the service.
+ExecStart=__APP_DIR__/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+# 1 GB VM. Measured steady state is ~120 MB; this cap turns a leak into a
+# clean restart instead of an OOM-killed box.
+MemoryMax=400M
+
+[Install]
+WantedBy=multi-user.target

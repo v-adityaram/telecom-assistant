@@ -10,14 +10,17 @@ Exits non-zero if anything fails. Voice *audio* can't be driven here - only the 
 endpoints are covered; the WebRTC loop needs a human with a microphone at http://127.0.0.1:8000/.
 """
 import json
+import os
 import time
 
 import httpx
 
-BASE = "http://127.0.0.1:8000"
+# SMOKE_BASE=https://104.211.224.38 SMOKE_INSECURE=1  -> run against the VM
+# (INSECURE skips TLS verification for its self-signed cert).
+BASE = os.environ.get("SMOKE_BASE", "http://127.0.0.1:8000")
 NUM = "+919999900003"
 DEFAULT_CLAR = "Happy to help — I can check your plan or profile"
-client = httpx.Client(base_url=BASE, timeout=30)
+client = httpx.Client(base_url=BASE, timeout=60, verify=os.environ.get("SMOKE_INSECURE") != "1")
 
 results = []  # (section, name, ok, detail, ms)
 
