@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from fastapi import APIRouter
@@ -13,6 +14,21 @@ from app.services.session_store import PendingClarification, clear_pending, get_
 from app.tools.registry import execute_tool
 
 router = APIRouter()
+
+# Matches a run of digits (with optional embedded spaces/dashes) that's the
+# right shape for an Indian mobile number: 10 digits bare, or 12 with a "91"
+# country code — deliberately excludes other digit-string lengths (IMEIs are
+# 15, OTPs are 4-6) so those don't false-positive here.
+_DIGIT_RUN = re.compile(r"\d[\d\s-]*\d|\d")
+
+
+def _mentions_different_account(message: str, mobile_number: str) -> bool:
+    own = re.sub(r"\D", "", mobile_number)[-10:]
+    for token in _DIGIT_RUN.findall(message):
+        digits = re.sub(r"\D", "", token)
+        if len(digits) in (10, 12) and digits[-10:] != own:
+            return True
+    return False
 
 
 class ChatRequest(BaseModel):
@@ -36,6 +52,18 @@ class ChatResponse(BaseModel):
 @router.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     session_id = request.session_id or str(uuid.uuid4())
+
+    if _mentions_different_account(request.message, request.mobile_number):
+        return ChatResponse(
+            type="answer",
+            session_id=session_id,
+            message=(
+                "I can only look up the account you're signed in with — not other "
+                "phone numbers. Ask me about your own profile, device, balance, "
+                "purchase history, or offers."
+            ),
+        )
+
     pending = get_pending(session_id)
     candidate_intents = pending.possible_intents if pending else None
 

@@ -16,6 +16,31 @@ spoke). Not yet re-verified live against real background noise — do that befor
 and reach for `near_field` instead of the `far_field` default if the caller is on a headset rather
 than a laptop/desk mic.
 
+**Update 2:** two live-testing findings from a phone session, both fixed:
+- **Chat gave a misleading answer when the message named a different phone number**
+  ("what's the device of 9999900004" while signed in as `...0003`) — it silently answered with the
+  *signed-in* account's own data, phrased as if it had answered about the other number. The backend
+  was always correctly ignoring the message-stated number per the security rule (never let the model
+  pick the account) — the bug was answering at all instead of saying so. Fixed in `app/api/chat.py`:
+  `_mentions_different_account()` regex-detects a 10-digit (or 12 with a "91" prefix) number in the
+  message that doesn't match the authenticated `mobile_number`, and short-circuits to a plain decline
+  *before* the router or any tool runs — no LLM call spent on it either. Deliberately narrow (10/12
+  digit runs only) so a 15-digit IMEI or a 4-6 digit OTP mentioned in a message doesn't false-trigger.
+  Tests: `test_message_naming_a_different_number_declines_without_router_or_tool_call`,
+  `test_message_naming_the_same_number_is_not_treated_as_different` in `tests/test_chat_api.py`.
+- **Voice: audio played immediately but the transcript bubble didn't appear for ~1-3s after**, since
+  Azure's Realtime API produces the full transcript only at `response.output_audio_transcript.done`,
+  well after `output_audio_buffer.started` (no streaming deltas — see the known-limitations note
+  above). Chat already showed typing dots for its own latency; voice showed nothing. Fixed in
+  `app/static/index.html`: `output_audio_buffer.started` now immediately adds an assistant bubble
+  with the same `.typing` dots chat uses (tracked in `pendingVoiceAssistantMsg`), and
+  `response.output_audio_transcript.done` replaces the dots with the real transcript instead of
+  creating a new bubble. If the caller barges in before a transcript ever arrives, the stale dots
+  bubble is removed on the next `input_audio_buffer.speech_started` rather than bouncing forever.
+  This doesn't reduce the actual delay (that's an Azure API constraint) — it just gives the same
+  "working on it" feedback chat already had. Not yet re-verified live on a real call with barge-in —
+  do that before calling this closed.
+
 ## Where things stood (2026-09-03, end of prior session)
 
 **All 10 plan phases are done and deployed.** Live at **https://104.211.224.38/** (self-signed

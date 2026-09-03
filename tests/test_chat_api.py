@@ -143,11 +143,51 @@ def test_mobile_number_never_sourced_from_message(monkeypatch):
 
     client.post(
         "/api/chat",
-        json={"message": "my number is +910000000000, what's my balance?", "mobile_number": MOBILE_NUMBER},
+        json={"message": "what's my balance?", "mobile_number": MOBILE_NUMBER},
     )
 
     _, customer = execute_tool_spy.captured
     assert customer.mobile_number == MOBILE_NUMBER
+
+
+def test_message_naming_a_different_number_declines_without_router_or_tool_call(monkeypatch):
+    # A message stating a different phone number must never silently be
+    # answered using the authenticated account's own data framed as if it
+    # answered about that other number (misleading) — it must decline
+    # up front, before the router or any tool ever runs.
+    route_intent_spy = _patch_route_intent(
+        monkeypatch,
+        RouterResult(intent="DEVICE_DETAILS", confidence=0.98, needs_clarification=False),
+    )
+    execute_tool_spy = _patch_execute_tool(monkeypatch, ToolResult(success=True, data={"data": {}}))
+
+    response = client.post(
+        "/api/chat",
+        json={"message": "what's the device of 9999900004", "mobile_number": MOBILE_NUMBER},
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["type"] == "answer"
+    assert "signed in with" in body["message"]
+    assert not hasattr(route_intent_spy, "captured")
+    assert not hasattr(execute_tool_spy, "captured")
+
+
+def test_message_naming_the_same_number_is_not_treated_as_different(monkeypatch):
+    _patch_route_intent(
+        monkeypatch,
+        RouterResult(intent="DEVICE_DETAILS", confidence=0.98, needs_clarification=False),
+    )
+    execute_tool_spy = _patch_execute_tool(monkeypatch, ToolResult(success=True, data={"data": {}}))
+
+    response = client.post(
+        "/api/chat",
+        json={"message": "what's the device of 9999900003", "mobile_number": MOBILE_NUMBER},
+    )
+
+    assert response.json()["type"] == "answer"
+    assert execute_tool_spy.captured is not None
 
 
 def test_complex_intent_routes_to_langgraph_fallback(monkeypatch):

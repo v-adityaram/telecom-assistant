@@ -478,6 +478,7 @@ STARTERS.forEach((s) => {
 let peerConnection = null, dataChannel = null, micStream = null;
 let micAudioContext = null, micMeterRafId = null;
 let pendingVoiceUserBubble = null;
+let pendingVoiceAssistantMsg = null;   // { el, body } — dots shown while audio plays, ahead of the transcript
 let sessionCfg = null;
 
 function setVoiceUI(state, hint) {
@@ -578,6 +579,7 @@ function teardownVoice() {
   if (dataChannel) { try { dataChannel.close(); } catch (_) {} }
   if (peerConnection) { try { peerConnection.close(); } catch (_) {} }
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
+  if (pendingVoiceAssistantMsg) { pendingVoiceAssistantMsg.el.remove(); pendingVoiceAssistantMsg = null; }
   dataChannel = null; peerConnection = null; micStream = null; pendingVoiceUserBubble = null;
   sessionCfg = null; resetVoiceLangState();
 }
@@ -681,6 +683,9 @@ async function onRealtimeEvent(evt) {
   switch (evt.type) {
     case 'input_audio_buffer.speech_started':
       voiceHint.textContent = 'Hearing you…';
+      // A prior reply's transcript never arrived (the caller barged in) — its
+      // dots would otherwise bounce forever with no answer coming.
+      if (pendingVoiceAssistantMsg) { pendingVoiceAssistantMsg.el.remove(); pendingVoiceAssistantMsg = null; }
       return;
     case 'input_audio_buffer.speech_stopped':
       voiceHint.textContent = 'Thinking…';
@@ -707,13 +712,25 @@ async function onRealtimeEvent(evt) {
     }
     case 'output_audio_buffer.started':
       voiceHint.textContent = 'Speaking…';
+      // Audio starts playing well before the transcript is ready (Azure
+      // doesn't stream transcript deltas) — show dots immediately rather
+      // than leaving the reply with no visible bubble at all until then.
+      if (!pendingVoiceAssistantMsg) {
+        const msg = addMessage('assistant', '', { meta: '🔊 voice' });
+        msg.body.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+        pendingVoiceAssistantMsg = msg;
+      }
       return;
     case 'output_audio_buffer.stopped':
       voiceHint.textContent = 'Listening — just talk';
       return;
     case 'response.output_audio_transcript.done':
     case 'response.audio_transcript.done':
-      if (evt.transcript) addMessage('assistant', evt.transcript, { meta: '🔊 voice' });
+      if (evt.transcript) {
+        if (pendingVoiceAssistantMsg) pendingVoiceAssistantMsg.body.textContent = evt.transcript;
+        else addMessage('assistant', evt.transcript, { meta: '🔊 voice' });
+      }
+      pendingVoiceAssistantMsg = null;
       pendingVoiceUserBubble = null;
       return;
     case 'response.function_call_arguments.done':
