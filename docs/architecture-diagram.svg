@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1200" font-family="Segoe UI, Arial, sans-serif">
+<rect x="0" y="0" width="1600" height="1200" fill="#ffffff"/>
+<defs>
+<marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+</marker>
+<marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed"/>
+</marker>
+<marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M 0 0 L 10 5 L 0 10 z" fill="#16a34a"/>
+</marker>
+<marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+</marker>
+</defs>
+<text x="800.0" y="32" font-size="24" font-weight="800" fill="#0f172a" text-anchor="middle">Telecom AI Assistant — System Architecture</text>
+<text x="800.0" y="54" font-size="13" fill="#64748b" text-anchor="middle">One secure backend and one tool allow-list shared by Chat and Voice · 2026-09-03</text>
+<line x1="1240" y1="14" x2="1268" y2="14" stroke="#2563eb" stroke-width="2.5"/>
+<text x="1274" y="18" font-size="10.5" fill="#334155">Chat-path wiring</text>
+<line x1="1240" y1="32" x2="1268" y2="32" stroke="#7c3aed" stroke-width="2.5"/>
+<text x="1274" y="36" font-size="10.5" fill="#334155">Voice-path wiring</text>
+<line x1="1240" y1="50" x2="1268" y2="50" stroke="#16a34a" stroke-width="2.5"/>
+<text x="1274" y="54" font-size="10.5" fill="#334155">Shared secure tool layer</text>
+<line x1="1240" y1="68" x2="1268" y2="68" stroke="#6b7280" stroke-width="2.5" stroke-dasharray="5,3"/>
+<text x="1274" y="72" font-size="10.5" fill="#334155">External API call (Azure OpenAI / Telecom API)</text>
+<rect x="60" y="90" width="1480" height="150" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.4" stroke-dasharray="7,5"/>
+<text x="80" y="112" font-size="12.5" font-weight="700" fill="#475569" letter-spacing="0.3">BROWSER  —  app/static/index.html  (single HTML file, no framework)</text>
+<rect x="100" y="128" width="430" height="96" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="112" y="150" font-size="13" font-weight="700" fill="#0f172a">Chat panel</text>
+<text x="112" y="168" font-size="11.5" fill="#334155">Type a question →</text>
+<text x="112" y="184" font-size="11.5" fill="#334155">POST /api/chat</text>
+<rect x="560" y="128" width="430" height="96" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.6"/>
+<text x="572" y="150" font-size="13" font-weight="700" fill="#0f172a">Voice panel</text>
+<text x="572" y="168" font-size="11.5" fill="#334155">Mic capture, WebRTC, live level meter,</text>
+<text x="572" y="184" font-size="11.5" fill="#334155">caller captions, language auto-switch</text>
+<rect x="1020" y="128" width="460" height="96" rx="8" fill="#f8fafc" stroke="#6b7280" stroke-width="1.6"/>
+<text x="1032" y="150" font-size="13" font-weight="700" fill="#0f172a">Sidebar (shared)</text>
+<text x="1032" y="168" font-size="11.5" fill="#334155">Account number + Save, theme (light/dark),</text>
+<text x="1032" y="184" font-size="11.5" fill="#334155">debug event log — all via localStorage</text>
+<rect x="60" y="268" width="1480" height="660" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.4" stroke-dasharray="7,5"/>
+<text x="80" y="290" font-size="12.5" font-weight="700" fill="#475569" letter-spacing="0.3">FASTAPI BACKEND  —  Azure VM · nginx :443 → uvicorn 127.0.0.1:8000</text>
+<rect x="100" y="308" width="630" height="50" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="112" y="330" font-size="13" font-weight="700" fill="#0f172a">app/api/chat.py</text>
+<text x="112" y="348" font-size="11.5" fill="#334155">POST /api/chat</text>
+<rect x="100" y="388" width="630" height="86" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/>
+<text x="112" y="410" font-size="13" font-weight="700" fill="#0f172a">app/router/intent_router.py + app/services/llm.py</text>
+<text x="112" y="428" font-size="11.5" fill="#334155">classify_intent() — ONE Azure OpenAI call per turn</text>
+<text x="112" y="444" font-size="11.5" fill="#334155">→ intent · confidence · scope · possible_intents</text>
+<text x="112" y="460" font-size="11.5" fill="#334155">[Agent 1 — Router]</text>
+<rect x="100" y="504" width="630" height="50" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="112" y="526" font-size="13" font-weight="700" fill="#0f172a">app/router/confidence.py</text>
+<text x="112" y="544" font-size="11.5" fill="#334155">build_router_result() — pure Python, no LLM call</text>
+<rect x="100" y="584" width="145" height="116" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="112" y="606" font-size="13" font-weight="700" fill="#0f172a">Ambiguous</text>
+<text x="112" y="624" font-size="11.5" fill="#334155">→ session_store.py</text>
+<text x="112" y="640" font-size="11.5" fill="#334155">in-memory pending state,</text>
+<text x="112" y="656" font-size="11.5" fill="#334155">ask the caller — no tool call</text>
+<rect x="255" y="584" width="210" height="116" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/>
+<text x="267" y="606" font-size="13" font-weight="700" fill="#0f172a">intent = COMPLEX</text>
+<text x="267" y="624" font-size="11.5" fill="#334155">→ complex_flow.py</text>
+<text x="267" y="640" font-size="11.5" fill="#334155">LangGraph: plan → fetch →</text>
+<text x="267" y="656" font-size="11.5" fill="#334155">answer   [Agents 2 + 3]</text>
+<rect x="475" y="584" width="255" height="116" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/>
+<text x="487" y="606" font-size="13" font-weight="700" fill="#0f172a">Single known intent</text>
+<text x="487" y="624" font-size="11.5" fill="#334155">→ execute_tool() [registry.py]</text>
+<text x="487" y="640" font-size="11.5" fill="#334155">then scope=full → response.py template</text>
+<text x="487" y="656" font-size="11.5" fill="#334155">or scope=specific → answer_synthesis.py</text>
+<text x="487" y="672" font-size="11.5" fill="#334155">(+1 LLM call)   [Agent 4]</text>
+<rect x="800" y="308" width="630" height="116" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.6"/>
+<text x="812" y="330" font-size="13" font-weight="700" fill="#0f172a">app/api/voice.py</text>
+<text x="812" y="348" font-size="11.5" fill="#334155">POST /api/voice/session → realtime.py  (once, at call start)</text>
+<text x="812" y="364" font-size="11.5" fill="#334155">POST /api/voice/tool → registry.py  (on every tool call)</text>
+<rect x="800" y="454" width="630" height="90" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.6"/>
+<text x="812" y="476" font-size="13" font-weight="700" fill="#0f172a">app/services/realtime.py</text>
+<text x="812" y="494" font-size="11.5" fill="#334155">create_realtime_session() — mints a short-lived token,</text>
+<text x="812" y="510" font-size="11.5" fill="#334155">builds the FULL session (instructions, 5 tools, voice=alloy,</text>
+<text x="812" y="526" font-size="11.5" fill="#334155">turn_detection, transcription) — the long-lived API key never leaves here</text>
+<rect x="100" y="730" width="1330" height="55" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.6"/>
+<text x="112" y="752" font-size="13" font-weight="700" fill="#0f172a">app/tools/registry.py — TOOL_REGISTRY (allow-list)</text>
+<text x="112" y="770" font-size="11.5" fill="#334155">execute_tool(intent, customer) — the ONLY path from either agent to a real API call   [Secure Tool Layer]</text>
+<rect x="100" y="800" width="1330" height="44" rx="8" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.6"/>
+<text x="112" y="822" font-size="12" font-weight="700" fill="#0f172a">app/tools/{profile,device,balance,purchase_history,offers}.py</text>
+<text x="112" y="840" font-size="11.5" fill="#334155">One zero-argument function each, customer-scoped — no parameters an LLM could ever control</text>
+<rect x="100" y="858" width="1330" height="44" rx="8" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.6"/>
+<text x="112" y="880" font-size="12" font-weight="700" fill="#0f172a">app/services/telecom_client.py</text>
+<text x="112" y="898" font-size="11.5" fill="#334155">Shared async httpx client, explicit timeouts, structured ToolResult(success, data, error)</text>
+<rect x="100" y="968" width="630" height="100" rx="8" fill="#f9fafb" stroke="#6b7280" stroke-width="1.6"/>
+<text x="112" y="990" font-size="13" font-weight="700" fill="#0f172a">Real Telecom API (Azure Function) — external</text>
+<text x="112" y="1008" font-size="11.5" fill="#334155">GET /api/profile · /device-details · /balance ·</text>
+<text x="112" y="1024" font-size="11.5" fill="#334155">/purchase-history · /offers   (?mobileNumber=...)</text>
+<rect x="800" y="948" width="630" height="212" rx="8" fill="#f9fafb" stroke="#6b7280" stroke-width="1.4" stroke-dasharray="5,3"/>
+<text x="820" y="968" font-size="11.5" font-weight="700" fill="#475569">AZURE OPENAI — resource 2870517-6087 (unified /openai/v1 surface)</text>
+<rect x="818" y="980" width="594" height="46" rx="8" fill="#ffffff" stroke="#6b7280" stroke-width="1.6"/>
+<text x="830" y="1002" font-size="12" font-weight="700" fill="#0f172a">gpt-5.4-nano</text>
+<text x="830" y="1020" font-size="11.5" fill="#334155">Chat intent classification, scope-specific answers,</text>
+<text x="830" y="1036" font-size="11.5" fill="#334155">LangGraph plan + answer nodes   (Agents 1–4)</text>
+<rect x="818" y="1036" width="594" height="46" rx="8" fill="#ffffff" stroke="#6b7280" stroke-width="1.6"/>
+<text x="830" y="1058" font-size="12" font-weight="700" fill="#0f172a">gpt-realtime-1.5</text>
+<text x="830" y="1076" font-size="11.5" fill="#334155">Voice speech-to-speech + function calling   (Agent 5)</text>
+<rect x="818" y="1092" width="594" height="46" rx="8" fill="#ffffff" stroke="#6b7280" stroke-width="1.6"/>
+<text x="830" y="1114" font-size="12" font-weight="700" fill="#0f172a">gpt-live-transcribe</text>
+<text x="830" y="1132" font-size="11.5" fill="#334155">Caller captions — configured inside the realtime session,</text>
+<text x="830" y="1148" font-size="11.5" fill="#334155">no separate call from our code</text>
+<line x1="315" y1="224" x2="400" y2="308" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<line x1="415" y1="358" x2="415" y2="388" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<line x1="415" y1="474" x2="415" y2="504" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<line x1="415" y1="554" x2="172" y2="584" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<line x1="415" y1="554" x2="360" y2="584" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<line x1="415" y1="554" x2="602" y2="584" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<line x1="360" y1="700" x2="460" y2="730" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<line x1="602" y1="700" x2="700" y2="730" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<line x1="775" y1="224" x2="1000" y2="308" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<line x1="950" y1="424" x2="950" y2="454" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<rect x="966" y="428" width="123.89999999999999" height="16" fill="#ffffff" opacity="0.92"/>
+<text x="970" y="440" font-size="10.5" fill="#7c3aed" font-style="italic">session mint (once)</text>
+<line x1="1280" y1="424" x2="1220" y2="730" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<rect x="1286" y="548" width="130.0" height="16" fill="#ffffff" opacity="0.92"/>
+<text x="1290" y="560" font-size="10.5" fill="#7c3aed" font-style="italic">tool call (per turn)</text>
+<line x1="765" y1="785" x2="765" y2="800" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+<line x1="765" y1="844" x2="765" y2="858" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+<line x1="415" y1="902" x2="415" y2="968" stroke="#6b7280" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrow-gray)"/>
+<rect x="421" y="926" width="62.9" height="16" fill="#ffffff" opacity="0.92"/>
+<text x="425" y="938" font-size="10.5" fill="#6b7280" font-style="italic">HTTPS GET</text>
+<path d="M 730,529 L 760,529 L 760,1003 L 818,1003" fill="none" stroke="#6b7280" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrow-gray)"/>
+<text x="770" y="760" font-size="10" fill="#6b7280" font-style="italic" text-anchor="middle" transform="rotate(-90 770 760)">Chat Completions API (Agents 1–4)</text>
+<path d="M 1115,544 L 1500,544 L 1500,1059 L 1412,1059" fill="none" stroke="#6b7280" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrow-gray)"/>
+<text x="1512" y="800" font-size="10" fill="#6b7280" font-style="italic" text-anchor="middle" transform="rotate(-90 1512 800)">POST /realtime/client_secrets (mint)</text>
+<path d="M 950,128 L 950,102 L 1560,102 L 1560,1059 L 1412,1059" fill="none" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrow-purple)"/>
+<rect x="986" y="85" width="422.79999999999995" height="16" fill="#ffffff" opacity="0.92"/>
+<text x="990" y="97" font-size="10.5" fill="#7c3aed" font-style="italic">direct WebRTC — audio &amp; function-call events never touch our backend</text>
+</svg>
