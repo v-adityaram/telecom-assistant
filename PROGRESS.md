@@ -99,7 +99,14 @@ so a session on any machine can pick up where the last one left off.
       straight from the browser to Azure's `/realtime/calls` SDP endpoint using the ephemeral token;
       on `response.function_call_arguments.done` it calls `/api/voice/tool` and feeds the result
       back via a `function_call_output` conversation item. Raw realtime/RTC events go to a
-      collapsible debug drawer instead of the main thread. Deliberately **omits**
+      collapsible debug drawer instead of the main thread. **Light/dark themes** (2026-09-03): the
+      page was dark-only with hardcoded colors; every color now goes through a token, with light as
+      the base palette and a `:root[data-theme="dark"]` override. A tiny inline script in `<head>`
+      applies the stored choice (or the OS preference when none) before first paint so there's no
+      flash; a System/Light/Dark control in the sidebar and a sun/moon button in the top bar both
+      write `localStorage.theme` (System = key removed, so it keeps following the OS live). Mobile
+      tweaks in the same pass: 16px composer input (stops iOS zoom-on-focus), safe-area bottom
+      padding, full-width debug drawer, wrapping voice hint. Deliberately **omits**
       the docs' `?webrtcfilter=on` query param — that filter's allow-listed event set does not
       include `response.function_call_arguments.done`, which would silently break tool calling.
       Also added a live mic-level meter (Web Audio `AnalyserNode`) to the Voice panel, independent
