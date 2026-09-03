@@ -236,6 +236,7 @@
       <label for="mobileNumber">Account</label>
       <input id="mobileNumber" type="text" value="+919999900003" spellcheck="false" placeholder="Mobile number">
       <button type="button" id="saveMobileBtn" class="save-btn">Save</button>
+      <span class="pill" id="subscriberBadge" hidden></span>
       <div class="hint">Sample POC number — real sign-in isn't wired up yet.</div>
     </div>
     <div class="section">
@@ -339,6 +340,17 @@ const STARTERS = ["What's my balance?", 'What offers do I have?', 'Show my devic
 
 function mobileNumber() { return $('mobileNumber').value.trim(); }
 
+// Prepaid/Postpaid is a real field the telecom API returns (subscriberType,
+// present on PROFILE and BALANCE responses) — this is a display-only label
+// pulled from actual response data, never guessed or hardcoded per number.
+function updateSubscriberBadge(subscriberType) {
+  const badge = $('subscriberBadge');
+  if (!subscriberType) { badge.hidden = true; return; }
+  badge.hidden = false;
+  badge.textContent = subscriberType;
+  badge.className = 'pill ' + (String(subscriberType).toLowerCase() === 'prepaid' ? 'on' : 'busy');
+}
+
 // Explicit save (not save-on-every-keystroke) so there's a clear moment of
 // "this took" rather than silent, implicit persistence.
 function loadSavedMobileNumber() {
@@ -351,6 +363,7 @@ function saveMobileNumber() {
   const value = mobileNumber();
   if (!value) return;
   try { localStorage.setItem('mobileNumber', value); } catch (_) {}
+  updateSubscriberBadge(null);   // stale label for the old number, not this one
   const btn = $('saveMobileBtn');
   clearTimeout(btn._resetTimer);
   btn.textContent = 'Saved ✓';
@@ -443,6 +456,8 @@ async function sendChat(text) {
     typing.remove();
     chatSessionId = body.session_id || chatSessionId;
     logDebug('chat', `${body.type} intent=${body.intent ?? '-'}`);
+    const subscriberType = body.data?.data?.subscriberType;
+    if (subscriberType) updateSubscriberBadge(subscriberType);
 
     if (body.type === 'clarification') {
       const chips = (body.possible_intents || []).map((i) => ({

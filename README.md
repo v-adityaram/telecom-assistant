@@ -4,6 +4,7 @@ Lightweight FastAPI backend for a telecom customer assistant (Chat + Realtime Vo
 
 - **Original plan**: [`docs/telecom_ai_assistant_implementation_plan.md`](docs/telecom_ai_assistant_implementation_plan.md) — the phase-by-phase spec this was built against.
 - **How it actually works now**: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — every LLM call site ("agent"), what each Python file does, the chat and voice request lifecycles, security model, and a diagram.
+- **Chat request/response trace**: [`docs/chat-flow-diagram.md`](docs/chat-flow-diagram.md) — a mermaid sequence diagram tracing one message through the real code, step by step, both outcomes (answer / clarification).
 - **Current progress and open decisions**: [`PROGRESS.md`](PROGRESS.md) — read this if you're picking this project up on a different machine/session than the one that last worked on it; its "Where things stand" section at the top is written as a fast-pickup summary, not just a log.
 
 ## Local setup
