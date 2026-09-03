@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # Optional: name of a deployed transcription model (e.g. whisper), used
     # only to show a live transcript of what the caller said. Omit if unset.
     azure_openai_transcribe_deployment: str = ""
+    # "far_field" for a laptop/desk mic (caller not wearing a headset — the
+    # common case, and the one background noise reports have come from),
+    # "near_field" for a headset/earbuds mic close to the mouth.
+    realtime_noise_reduction_mode: str = "far_field"
 
     telecom_api_base_url: str = ""
     telecom_api_key: str = ""

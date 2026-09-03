@@ -151,6 +151,11 @@ def _session_config(transcribe_model: str | None) -> dict:
             # for, so the server auto-responds as before.
             "create_response": transcribe_model is None,
         },
+        # Suppresses steady background noise (fans, traffic, room hum) before
+        # it reaches VAD/transcription — without this, loud-enough background
+        # noise can trip server_vad's energy threshold on its own and get
+        # transcribed as speech, sometimes in a random language.
+        "noise_reduction": {"type": settings.realtime_noise_reduction_mode},
     }
     if transcribe_model:
         audio_input["transcription"] = {"model": transcribe_model}

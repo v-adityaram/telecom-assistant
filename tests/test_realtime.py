@@ -129,6 +129,30 @@ async def test_create_realtime_session_http_error(monkeypatch):
     assert result.error == "realtime_session_error"
 
 
+@pytest.mark.asyncio
+async def test_noise_reduction_is_sent_at_mint_and_post_connect(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "azure_openai_transcribe_deployment", "gpt-live-transcribe")
+    monkeypatch.setattr(settings, "realtime_noise_reduction_mode", "near_field")
+
+    captured = {}
+
+    class CapturingClient(FakeAsyncClient):
+        async def post(self, url, json=None, headers=None):
+            captured["payload"] = json
+            return await super().post(url, json=json, headers=headers)
+
+    fake_client = CapturingClient(response=FakeResponse(200, {"value": "tok"}))
+    monkeypatch.setattr(realtime.httpx, "AsyncClient", lambda **kwargs: fake_client)
+
+    result = await realtime.create_realtime_session()
+
+    mint_input = captured["payload"]["session"]["audio"]["input"]
+    update_input = result.post_connect_update["session"]["audio"]["input"]
+    assert mint_input["noise_reduction"] == {"type": "near_field"}
+    assert update_input["noise_reduction"] == {"type": "near_field"}
+
+
 def test_function_name_to_intent_matches_tool_registry():
     from app.tools.registry import TOOL_REGISTRY
 

@@ -4,7 +4,19 @@ Tracks where this build stands against `docs/telecom_ai_assistant_implementation
 Read that file first for the full architecture and rules — this file is just status + open decisions,
 so a session on any machine can pick up where the last one left off.
 
-## Where things stand (2026-09-03, end of session)
+## Where things stand (2026-09-03, updated)
+
+**Update:** added Realtime API `noise_reduction` (`audio.input.noise_reduction`, mode set via
+`REALTIME_NOISE_REDUCTION_MODE`, default `far_field`) to `_session_config()` in
+`app/services/realtime.py`, plus explicit `echoCancellation`/`noiseSuppression`/`autoGainControl`
+constraints on the frontend's `getUserMedia` call (`app/static/index.html`, was bare `{ audio: true }`).
+Motivated by a live debug log showing background noise occasionally tripping `server_vad`'s energy
+threshold on its own and getting transcribed as speech in a random/wrong language (no caller actually
+spoke). Not yet re-verified live against real background noise — do that before calling this closed,
+and reach for `near_field` instead of the `far_field` default if the caller is on a headset rather
+than a laptop/desk mic.
+
+## Where things stood (2026-09-03, end of prior session)
 
 **All 10 plan phases are done and deployed.** Live at **https://104.211.224.38/** (self-signed
 cert, accept the warning once). Redeploy: `cd ~/telecom-assistant && git pull && sudo ./deploy/setup_vm.sh`.

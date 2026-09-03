@@ -530,7 +530,9 @@ async function startVoice() {
     peerConnection.oniceconnectionstatechange = () => logDebug('rtc', 'ice ' + peerConnection.iceConnectionState);
 
     setVoiceUI('connecting', 'Requesting microphone…');
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
     const track = micStream.getAudioTracks()[0];
     peerConnection.addTrack(track);
     logDebug('mic', `${track.label || 'unnamed'} enabled=${track.enabled} muted=${track.muted}`);
