@@ -8,8 +8,41 @@ by history.
 
 ![System architecture diagram](architecture-diagram.svg)
 
-*(If the image doesn't render inline, open [`architecture-diagram.svg`](architecture-diagram.svg)
-directly — it's a plain SVG, viewable in any browser.)*
+*(If an image doesn't render inline, open it directly by filename in `docs/` — every diagram here
+is a plain SVG, viewable in any browser, no tooling required.)*
+
+---
+
+## In plain English, with 3 real examples
+
+Skip this section if you already know the architecture — it's for someone who doesn't. Each diagram
+below is a real question this assistant was actually asked and actually answered, traced step by
+step. No file names, no jargon.
+
+**A simple question** — most chat questions are this shape: one question, one real lookup, one
+answer, done in a few seconds.
+
+![Chat: asking a simple question](example-chat-simple.svg)
+
+**A harder question** — some questions can't be answered from a single lookup. "Am I eligible for
+5G?" depends on *both* your plan and your phone, which live in two different places — so the
+assistant recognizes that, checks both at once (not one after the other, to stay fast), and combines
+them into one answer instead of guessing or asking you to pick.
+
+![Chat: a question that needs more than one lookup](example-chat-complex.svg)
+
+**A voice call** — talking instead of typing works the same way underneath (same real data, same
+security rules), but everything happens live: the assistant hears you directly, can look things up
+mid-sentence, replies out loud, and — this took real engineering effort to get right, see
+[Language switching](#language-switching-why-its-client-driven) below — notices and adapts if you
+switch languages partway through the call.
+
+![Voice: having a spoken conversation](example-voice-call.svg)
+
+The rest of this document is the technical version of the same three ideas: what "figures out what
+you're asking" actually is (an LLM call with a specific job, not magic), what "checks both at once"
+means in code (concurrent calls through one shared, locked-down tool layer), and what "notices you
+switched languages" required (a real Azure quirk that took several rounds to get right).
 
 ---
 
