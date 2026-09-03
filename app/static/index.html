@@ -191,6 +191,8 @@
   .seg button:hover { color: var(--text); }
   .seg button.active { background: var(--surface-2); color: var(--text); font-weight: 600; }
   .topbar .spacer { flex: 1; }
+  #themeBtn { background: var(--surface); border: 1px solid var(--border); }
+  #themeBtn:hover { background: var(--surface-2); border-color: var(--border-strong); }
 
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 9; display: none; }
   @media (max-width: 860px) {
@@ -654,8 +656,12 @@ function applyTheme() {
   const dark = choice === 'dark' || (choice === 'system' && themeQuery.matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   $('themeColor').setAttribute('content', dark ? '#212121' : '#f7f7f8');
-  $('themeIconSun').hidden = !dark;   // in dark mode the button offers "go light"
-  $('themeIconMoon').hidden = dark;
+  // toggleAttribute, not `.hidden =`: the `hidden` property only exists on
+  // HTML elements — on an <svg> it's a no-op expando, so both icons showed.
+  $('themeIconSun').toggleAttribute('hidden', !dark);   // in dark mode the button offers "go light"
+  $('themeIconMoon').toggleAttribute('hidden', dark);
+  $('themeBtn').title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+  $('themeBtn').setAttribute('aria-label', $('themeBtn').title);
   document.querySelectorAll('#themeSeg button').forEach((b) => {
     b.classList.toggle('active', b.dataset.themeChoice === choice);
   });
