@@ -272,9 +272,10 @@ is what made diagnosing the Azure-specific issues above possible without a brows
 ## Deployment
 
 `deploy/` holds the versioned deployment: `telecom-assistant.service` (systemd, runs uvicorn on
-`127.0.0.1:8000`, `Restart=always`, capped at 400 MB), `nginx.conf` (HTTPS on 443 with a self-signed
-cert, HTTP redirects to it — required, not cosmetic, since browsers only grant microphone access on
-a secure origin), and `setup_vm.sh` (idempotent: packages, venv, the cert, the nginx site, the
+`127.0.0.1:8000`, `Restart=always`, capped at 400 MB), `nginx.conf` (HTTPS on 443 with a real
+Let's Encrypt certificate for a free sslip.io hostname that resolves to the VM's IP, HTTP redirects
+to it — required, not cosmetic, since browsers only grant microphone access on a secure origin), and
+`setup_vm.sh` (idempotent: packages, venv, obtaining/renewing the certificate, the nginx site, the
 systemd unit — safe to re-run). Redeploying is two lines on the VM:
 `git pull && sudo ./deploy/setup_vm.sh`. Full details, including what was learned getting this
 working the first time, are in `PROGRESS.md`'s Phase 10 entry.

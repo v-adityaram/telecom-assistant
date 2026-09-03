@@ -6,7 +6,21 @@ so a session on any machine can pick up where the last one left off.
 
 ## Where things stand (2026-09-03, updated)
 
-**Update:** added Realtime API `noise_reduction` (`audio.input.noise_reduction`, mode set via
+**Update 4:** replaced the self-signed TLS cert with a real, browser-trusted Let's Encrypt one.
+Public CAs never issue certs for a bare IP, so `deploy/setup_vm.sh` now derives a free sslip.io
+hostname from `PUBLIC_IP` (`104.211.224.38` -> `104-211-224-38.sslip.io`, resolves with zero DNS
+setup) and obtains a cert for it via the HTTP-01 webroot challenge — a `PUBLIC_DOMAIN` env var
+overrides this if a real owned domain is ever pointed at the VM instead. First run does a brief
+http-only nginx bootstrap (the real config can't start yet — it points at a cert that doesn't exist
+until the challenge succeeds); every run after that is a no-op since the cert already exists.
+Renewal is automatic via certbot's own systemd timer, with a `--deploy-hook` so nginx actually
+reloads the renewed cert (it caches the loaded cert in memory otherwise). nginx never needs to stop
+for either issuance or renewal — webroot, not standalone. Visiting the app is now
+`https://104-211-224-38.sslip.io/`, not the raw IP. Not yet re-verified with an actual redeploy on
+the VM — do that before calling this closed, and if the ACME challenge fails, check that port 80 is
+still reachable from the internet (it was, per the NSG rules recorded in the deployment notes below).
+
+**Update 3:** added Realtime API `noise_reduction` (`audio.input.noise_reduction`, mode set via
 `REALTIME_NOISE_REDUCTION_MODE`, default `far_field`) to `_session_config()` in
 `app/services/realtime.py`, plus explicit `echoCancellation`/`noiseSuppression`/`autoGainControl`
 constraints on the frontend's `getUserMedia` call (`app/static/index.html`, was bare `{ audio: true }`).

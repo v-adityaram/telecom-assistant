@@ -15,8 +15,9 @@ import time
 
 import httpx
 
-# SMOKE_BASE=https://104.211.224.38 SMOKE_INSECURE=1  -> run against the VM
-# (INSECURE skips TLS verification for its self-signed cert).
+# SMOKE_BASE=https://104-211-224-38.sslip.io  -> run against the VM (its
+# cert is real/trusted now, so SMOKE_INSECURE=1 shouldn't be needed — kept
+# as an escape hatch in case a redeploy is mid-bootstrap without one yet).
 BASE = os.environ.get("SMOKE_BASE", "http://127.0.0.1:8000")
 NUM = "+919999900003"
 DEFAULT_CLAR = "Happy to help — I can check your plan or profile"

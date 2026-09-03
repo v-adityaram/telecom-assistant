@@ -41,10 +41,15 @@ Every later release is the same two lines from the checkout:
 git pull && sudo ./deploy/setup_vm.sh
 ```
 
-nginx serves HTTPS with a self-signed certificate and redirects 80 → 443. That's a requirement, not
-polish: browsers only allow microphone access on a secure origin, so over plain http the chat works
-but the voice button can't open the mic. Accept the certificate warning once. If you later point a
-domain at the VM, `certbot --nginx` replaces the self-signed cert and nothing else changes.
+nginx serves HTTPS under `https://<ip-with-dashes>.sslip.io/` (e.g. `104-211-224-38.sslip.io` for
+`104.211.224.38`) with a real, browser-trusted Let's Encrypt certificate — no domain purchase needed,
+sslip.io resolves that hostname straight to the embedded IP — and redirects 80 → 443. HTTPS is a
+requirement, not polish: browsers only allow microphone access on a secure origin, so over plain http
+the chat works but the voice button can't open the mic. `setup_vm.sh` obtains the certificate itself
+on first run (via the HTTP-01 challenge, so port 80 needs to stay reachable from the internet) and
+certbot's own timer renews it automatically afterward — nothing to do manually. Override the hostname
+with `PUBLIC_DOMAIN=your.domain sudo -E ./deploy/setup_vm.sh` if you'd rather use a real domain you
+own (point its A record at the VM's IP first).
 
 Rotating a key: edit `.env` on the VM, then `sudo systemctl restart telecom-assistant`.
 

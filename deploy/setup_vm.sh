@@ -12,12 +12,16 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_USER="${SUDO_USER:-azureuser}"
 PUBLIC_IP="${PUBLIC_IP:-104.211.224.38}"
+# A sslip.io hostname resolves to the embedded IP with zero DNS setup —
+# lets Let's Encrypt issue a real, browser-trusted certificate without
+# owning a domain (public CAs never issue certs for a bare IP).
+PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-$(echo "$PUBLIC_IP" | tr '.' '-').sslip.io}"
 
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
 [ -f "$APP_DIR/.env" ] || { echo "!! $APP_DIR/.env is missing — copy it over first (it is never committed)"; exit 1; }
 
 echo "== packages"
-DEBIAN_FRONTEND=noninteractive apt-get install -y -q nginx python3-venv openssl >/dev/null
+DEBIAN_FRONTEND=noninteractive apt-get install -y -q nginx python3-venv certbot >/dev/null
 
 echo "== python venv + dependencies (as $APP_USER)"
 sudo -u "$APP_USER" bash -c "
@@ -30,17 +34,33 @@ sudo -u "$APP_USER" bash -c "
 chown "$APP_USER:$APP_USER" "$APP_DIR/.env"
 chmod 600 "$APP_DIR/.env"
 
-echo "== self-signed TLS cert (browsers need https for microphone access)"
-if [ ! -f /etc/ssl/certs/telecom-assistant.crt ]; then
-  openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
-    -subj "/CN=$PUBLIC_IP" -addext "subjectAltName=IP:$PUBLIC_IP" \
-    -keyout /etc/ssl/private/telecom-assistant.key \
-    -out /etc/ssl/certs/telecom-assistant.crt 2>/dev/null
-  chmod 600 /etc/ssl/private/telecom-assistant.key
+echo "== TLS certificate (Let's Encrypt, for $PUBLIC_DOMAIN)"
+mkdir -p /var/www/certbot
+if [ ! -f "/etc/letsencrypt/live/$PUBLIC_DOMAIN/fullchain.pem" ]; then
+  # nginx can't start with the real site config yet — it points at a
+  # certificate that doesn't exist until the ACME challenge below succeeds.
+  # A minimal http-only bootstrap site serves just that challenge.
+  cat > /etc/nginx/sites-available/telecom-assistant <<EOF
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 200 'bootstrapping'; }
+}
+EOF
+  ln -sf /etc/nginx/sites-available/telecom-assistant /etc/nginx/sites-enabled/telecom-assistant
+  rm -f /etc/nginx/sites-enabled/default
+  nginx -t
+  systemctl restart nginx
+  certbot certonly --webroot -w /var/www/certbot -d "$PUBLIC_DOMAIN" \
+    --non-interactive --agree-tos --register-unsafely-without-email \
+    --deploy-hook "systemctl reload nginx"
 fi
 
 echo "== nginx"
-install -m 644 "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/telecom-assistant
+sed "s|__PUBLIC_DOMAIN__|$PUBLIC_DOMAIN|g" "$APP_DIR/deploy/nginx.conf" > /etc/nginx/sites-available/telecom-assistant
+chmod 644 /etc/nginx/sites-available/telecom-assistant
 ln -sf /etc/nginx/sites-available/telecom-assistant /etc/nginx/sites-enabled/telecom-assistant
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
@@ -61,4 +81,4 @@ done
 systemctl --no-pager --lines=3 status telecom-assistant || true
 echo -n "app:   "; curl -fsS  http://127.0.0.1:8000/health; echo
 echo -n "nginx: "; curl -fsSk https://127.0.0.1/health; echo
-echo "done — open https://$PUBLIC_IP/ (accept the self-signed cert warning once)"
+echo "done — open https://$PUBLIC_DOMAIN/ (trusted certificate, no browser warning)"
