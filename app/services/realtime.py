@@ -142,7 +142,13 @@ def _session_config(transcribe_model: str | None) -> dict:
             "type": "server_vad",
             "threshold": 0.5,
             "prefix_padding_ms": 300,
-            "silence_duration_ms": 500,
+            # How long a silence must last before the server decides the
+            # caller is actually done talking and commits the utterance.
+            # Raised from 500ms -> 750ms: at 500ms, a brief pause mid-sentence
+            # (or a noise gap) was enough to prematurely end the turn, causing
+            # fragmented half-utterances to get transcribed and answered on
+            # their own, firing responses seconds apart.
+            "silence_duration_ms": 750,
             # With transcription on, the browser triggers each response itself
             # (response.create) *after* it has the caller's transcript, so it
             # can state the caller's language deterministically first — the

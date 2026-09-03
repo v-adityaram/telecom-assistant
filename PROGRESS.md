@@ -6,6 +6,22 @@ so a session on any machine can pick up where the last one left off.
 
 ## Where things stand (2026-09-03, updated)
 
+**Update 5:** `noise_reduction` + STUN (Update 3) were deployed and retested live — did NOT fix it.
+A real voice session still showed constant false triggers: rapid language-switching (English ->
+Telugu -> Malayalam -> Telugu -> Hindi -> English inside two minutes), garbled multi-script
+gibberish in single utterances ("E tem मेरे", "أنت بتسجل quello"), and responses firing only
+seconds apart. Raised `silence_duration_ms` 500ms -> 750ms in `_session_config()`
+(`app/services/realtime.py`) per direct user request ("it's answering too quickly") — at 500ms a
+brief pause or noise gap was enough to prematurely end a turn, fragmenting one utterance into
+several. **This alone is very unlikely to fully fix it** — the density and severity of what was
+observed (multiple full responses per minute, scripts mixing within one transcript) looks more
+like a genuine feedback/echo problem (mic picking up the assistant's own speaker output) than pure
+timing. Untested hypothesis, not yet confirmed: ask the reporter to retest once with headphones —
+if the problem mostly disappears, it's echo, not noise or timing, and `echoCancellation` on
+`getUserMedia` alone isn't fully handling speaker/mic feedback in this environment. If it persists
+even with headphones, `threshold` (currently 0.5, unchanged) is the next lever — raising it reduces
+sensitivity to background volume specifically, separate from timing.
+
 **Update 4:** replaced the self-signed TLS cert with a real, browser-trusted Let's Encrypt one.
 Public CAs never issue certs for a bare IP, so `deploy/setup_vm.sh` now derives a free sslip.io
 hostname from `PUBLIC_IP` (`104.211.224.38` -> `104-211-224-38.sslip.io`, resolves with zero DNS
