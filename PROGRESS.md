@@ -223,8 +223,29 @@ so a session on any machine can pick up where the last one left off.
       real successful calls had already been observed taking up to ~4.5s, so 4.0s was cutting it too
       close for legitimate calls, not just abusive load. `scripts/live_smoke.py` extended to 47
       checks (added the two new cases as permanent regression coverage); passed 47/47 after the fix.
-      original dev machine is blocked by a corporate firewall, so deployment is git-pull-on-the-VM,
-      not push-from-here.
+- [x] **Phase 10 — Azure VM deployment**, done 2026-09-03. Live at **https://104.211.224.38/**
+      (self-signed cert — accept the warning once; http redirects to https). Deployment is versioned
+      in `deploy/`: `telecom-assistant.service` (systemd, runs uvicorn on 127.0.0.1:8000 as
+      `azureuser`, `Restart=always`, `MemoryMax=400M`), `nginx.conf` (80 → 301 → 443, TLS terminated,
+      proxies to the app; audio never transits nginx — WebRTC is browser → Azure), and
+      `setup_vm.sh` (idempotent: packages, venv + requirements as the non-root user, self-signed
+      cert, nginx site, systemd unit rendered from the template; safe to re-run). **Redeploy is two
+      lines on the VM**: `cd ~/telecom-assistant && git pull && sudo ./deploy/setup_vm.sh`.
+      **Why HTTPS is mandatory**: browsers only grant `getUserMedia` (microphone) on a secure
+      origin, so over plain http chat works but voice cannot open the mic. No domain exists for
+      the VM, hence self-signed; `certbot --nginx` is the upgrade path once there's a domain.
+      **Found on the first clean install**: `requirements.txt` pinned `truststore==0.9.2`, which
+      pip can't resolve alongside `openai==3.7.0` — the local venv only worked because `openai` had
+      been upgraded in place and pip bumped truststore with it. Now pinned `0.10.4`, verified with a
+      resolver dry-run. Lesson: after any `pip install -U`, re-derive the pins from `pip freeze`.
+      **Measured on the VM**: uvicorn RSS ~114 MB (matches the ~121 MB local measurement), 367 MB
+      RAM still free, 2 GB swap already present; the 1 GB SKU is fine. Full 47-check
+      `scripts/live_smoke.py` run against the VM: **46/47** — the one miss was bare "location?"
+      landing on the generic clarification once, the same temperature-1 wobble documented above
+      (re-run 6/6 against the VM immediately after). Everything that would indicate a deployment
+      problem passed: outbound Azure OpenAI + telecom calls from the VM, TLS, the COMPLEX path,
+      tool calls, security checks. Chat latency from the VM averages ~3.8s vs ~2.9s locally — it's
+      farther from the model endpoint; nothing to fix.
 
 ## Open decisions
 
@@ -281,11 +302,14 @@ so a session on any machine can pick up where the last one left off.
   is a fallback for a blocked network, not a hard requirement — check `nc`/`Test-NetConnection` to
   `104.211.224.38:22` first; if it's open, a normal `git clone`/`git pull` over SSH from that machine
   works.
-- **VM state as of 2026-09-03**: `~/telecom-assistant` exists but is *not* a git checkout — it only
-  has a `venv/` directory, no code. Nothing has actually been deployed yet; Phase 10 (clone the repo,
-  install deps, wire up nginx + a systemd service for uvicorn) is still fully ahead of us.
-  `~/voice-agent` is a separate, apparently unrelated folder (own `.venv`, a small `main.py`) — not
-  part of this project's plan, left untouched.
+- **VM state as of 2026-09-03 (deployed)**: `~/telecom-assistant` is a git checkout of `main` with
+  its own `.venv/` and the real `.env` (mode 600, never committed — copy it over by SFTP/scp when
+  setting up a fresh VM). The previous venv-only folder was moved aside as
+  `~/telecom-assistant.old-<timestamp>` and can be deleted. `~/voice-agent` is a separate,
+  apparently unrelated folder (own `.venv`, a small `main.py`) — not part of this project, left
+  untouched. Access facts: the GitHub repo is **public** (clone needs no token); `azureuser`'s
+  `sudo` **requires the password** (no NOPASSWD), so scripted deploys pipe it to `sudo -S`.
+  Service/logs: `systemctl status telecom-assistant`, `journalctl -u telecom-assistant -f`.
 - Fallback workaround (if SSH is blocked from wherever you're building): build and test everything
   locally, push to GitHub, then `git pull` directly on the VM via Azure Portal browser SSH/Serial
   Console instead of pushing from the dev machine.
