@@ -194,6 +194,14 @@
   #themeBtn { background: var(--surface); border: 1px solid var(--border); }
   #themeBtn:hover { background: var(--surface-2); border-color: var(--border-strong); }
 
+  .save-btn {
+    width: 100%; margin-top: 8px; padding: 7px 0; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text); font-size: 13px;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .save-btn:hover { border-color: var(--border-strong); background: var(--surface-2); }
+  .save-btn.saved { color: var(--ok); border-color: var(--ok); background: var(--surface); }
+
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 9; display: none; }
   @media (max-width: 860px) {
     .sidebar { position: fixed; z-index: 10; height: 100%; transform: translateX(-100%); box-shadow: var(--shadow); }
@@ -227,6 +235,7 @@
     <div class="section">
       <label for="mobileNumber">Account</label>
       <input id="mobileNumber" type="text" value="+919999900003" spellcheck="false" placeholder="Mobile number">
+      <button type="button" id="saveMobileBtn" class="save-btn">Save</button>
       <div class="hint">Sample POC number — real sign-in isn't wired up yet.</div>
     </div>
     <div class="section">
@@ -329,6 +338,28 @@ const TOOL_LABELS = {
 const STARTERS = ["What's my balance?", 'What offers do I have?', 'Show my device', 'What did I buy recently?'];
 
 function mobileNumber() { return $('mobileNumber').value.trim(); }
+
+// Explicit save (not save-on-every-keystroke) so there's a clear moment of
+// "this took" rather than silent, implicit persistence.
+function loadSavedMobileNumber() {
+  try {
+    const saved = localStorage.getItem('mobileNumber');
+    if (saved) $('mobileNumber').value = saved;
+  } catch (_) {}
+}
+function saveMobileNumber() {
+  const value = mobileNumber();
+  if (!value) return;
+  try { localStorage.setItem('mobileNumber', value); } catch (_) {}
+  const btn = $('saveMobileBtn');
+  clearTimeout(btn._resetTimer);
+  btn.textContent = 'Saved ✓';
+  btn.classList.add('saved');
+  btn._resetTimer = setTimeout(() => { btn.textContent = 'Save'; btn.classList.remove('saved'); }, 1500);
+}
+$('saveMobileBtn').addEventListener('click', saveMobileNumber);
+$('mobileNumber').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveMobileNumber(); });
+loadSavedMobileNumber();
 
 function logDebug(kind, detail) {
   const t = new Date().toLocaleTimeString([], { hour12: false });
@@ -581,17 +612,16 @@ const SCRIPT_RANGES = [
   ['Hindi',     /[؀-ۿ]/g],   // Arabic script: the transcriber sometimes renders spoken Hindi/Urdu this way
   ['English',   /[A-Za-z]/g],
 ];
-// `established`: whether a session language already exists. Before one does,
-// be lenient — "Hello." should set English rather than leave the model to
-// pick; afterwards, fillers ("Yeah.", "ok", "हाँ") must not flip it.
-function detectLanguage(text, established) {
+// Fillers ("Hello.", "Yeah.", "ok", "हाँ") must never flip the session
+// language — English needs 2+ words (or 8+ letters), Indic scripts need 5+
+// characters (combining marks inflate the count, so that's still ~1-2 words).
+function detectLanguage(text) {
   let best = null, bestCount = 0;
   for (const [lang, re] of SCRIPT_RANGES) {
     const n = (text.match(re) || []).length;
     if (n > bestCount) { best = lang; bestCount = n; }
   }
   if (!best) return null;
-  if (!established) return bestCount >= 4 ? best : null;
   if (best === 'English') {
     const words = text.trim().split(/\s+/).filter(Boolean).length;
     return (words >= 2 || bestCount >= 8) ? best : null;
@@ -599,10 +629,10 @@ function detectLanguage(text, established) {
   return bestCount >= 5 ? best : null;
 }
 
-let voiceLang = null;   // language the conversation is currently in
+let voiceLang = 'English';   // default until the caller's speech clearly says otherwise
 let awaitingTranscript = false, responseActive = false, pendingTrigger = false, pendingLang = null, fallbackTimer = null;
 function resetVoiceLangState() {
-  voiceLang = null; awaitingTranscript = false; responseActive = false; pendingTrigger = false; pendingLang = null;
+  voiceLang = 'English'; awaitingTranscript = false; responseActive = false; pendingTrigger = false; pendingLang = null;
   if (fallbackTimer) clearTimeout(fallbackTimer);
   fallbackTimer = null;
 }
@@ -618,11 +648,11 @@ function onUtteranceCommitted() {
 }
 function onCallerTranscript(transcript) {
   if (!manualTurns() || !awaitingTranscript) return;
-  triggerResponse(detectLanguage(transcript || '', !!voiceLang));
+  triggerResponse(detectLanguage(transcript || ''));
 }
 function languageDirective(lang) {
   const numbers = 'Say every number, amount, date, IMEI and ID in English, whatever the sentence language.';
-  if (lang && voiceLang && lang !== voiceLang) {
+  if (lang && lang !== voiceLang) {
     const prev = voiceLang;
     voiceLang = lang;
     logDebug('voice', `language switch ${prev} -> ${lang}`);
@@ -630,9 +660,7 @@ function languageDirective(lang) {
       `Answer this message in ${lang}. You MUST end the reply with one short question, in ${lang}, asking whether to continue in ${lang} from now on — do not skip it. ` +
       `Use ${lang} from the next turn unless they switch again. ${numbers}`;
   }
-  if (lang && !voiceLang) { voiceLang = lang; logDebug('voice', 'language detected: ' + lang); }
-  if (voiceLang) return `CURRENT CALLER LANGUAGE: ${voiceLang}. Reply in ${voiceLang}. ${numbers}`;
-  return numbers;
+  return `CURRENT CALLER LANGUAGE: ${voiceLang}. Reply in ${voiceLang}. ${numbers}`;
 }
 function triggerResponse(lang) {
   awaitingTranscript = false;

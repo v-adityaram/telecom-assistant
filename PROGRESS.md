@@ -4,6 +4,42 @@ Tracks where this build stands against `docs/telecom_ai_assistant_implementation
 Read that file first for the full architecture and rules — this file is just status + open decisions,
 so a session on any machine can pick up where the last one left off.
 
+## Where things stand (2026-09-03, end of session)
+
+**All 10 plan phases are done and deployed.** Live at **https://104.211.224.38/** (self-signed
+cert, accept the warning once). Redeploy: `cd ~/telecom-assistant && git pull && sudo ./deploy/setup_vm.sh`.
+
+**Solid, verified repeatedly, not just once:**
+- Chat: all 5 intents, typo tolerance, ambiguity → clarification, multi-turn follow-up resolution,
+  scope-aware answers (broad question → full template, narrow question → precise synthesized
+  answer), the COMPLEX/LangGraph fallback for multi-domain and advisory questions, security checks
+  (model can't override the phone number, can't call arbitrary URLs), graceful error handling.
+  `scripts/live_smoke.py` — 47 checks — is the regression net; run it after touching the router
+  prompt, thresholds, templates, or `complex_flow.py`.
+- Voice: WebRTC connects, mic capture confirmed via a live level meter, tool calls work, all 5
+  telecom APIs reachable, barge-in/interruption works, caller transcription works
+  (`gpt-live-transcribe`), the voice stays fixed (`alloy`, never drifts), language switching is
+  client-driven and deterministic (see Phase 8 below), numbers are spoken in English regardless of
+  sentence language, missing data (e.g. no customer name field) is reported honestly rather than
+  a made-up excuse.
+- Frontend: single dependency-free HTML file, light/dark theme with system default (WCAG-checked),
+  mobile-responsive, debug drawer for exactly this kind of live debugging.
+
+**Known limitations, not bugs to chase further right now:**
+- gpt-5-series models run at temperature 1 with no override, so a small number of borderline chat
+  phrasings occasionally wobble between runs even after prompt anchoring (documented per-case
+  below). Real, low-frequency, not fixable by more prompting — it's inherent model variance.
+- Azure's Realtime API never streams transcription deltas (confirmed via Microsoft support) — captions
+  land after each utterance, not word-by-word. True live captions would need Azure AI Speech running
+  in parallel; deliberately not started (bigger integration, discussed and declined for now).
+- `gpt-live-transcribe`'s default quota is 10 requests/min; very rapid back-to-back voice turns could
+  hit it (raise the quota in the portal if it shows up as a rate-limit `.failed` code).
+
+**If picking this up fresh, read in this order:** this section → the Phase 8 (Realtime Voice) entry
+below, which has the most hard-won detail (Azure quirks that cost real debugging time — mint-time
+transcription failing, session.update replacing not merging, the language-switching redesign) →
+the Phase 9/scope-aware entries if touching chat → `deploy/` if touching infrastructure.
+
 ## Phase status
 
 - [x] **Phase 1 — FastAPI foundation**: `app/main.py`, `app/config.py`, `app/logging_config.py`,
@@ -106,7 +142,14 @@ so a session on any machine can pick up where the last one left off.
       flash; a System/Light/Dark control in the sidebar and a sun/moon button in the top bar both
       write `localStorage.theme` (System = key removed, so it keeps following the OS live). Mobile
       tweaks in the same pass: 16px composer input (stops iOS zoom-on-focus), safe-area bottom
-      padding, full-width debug drawer, wrapping voice hint. Deliberately **omits**
+      padding, full-width debug drawer, wrapping voice hint. Fixed a bug the same night: the
+      theme-toggle button showed both the sun and moon icons stacked — `.hidden = true` is a no-op
+      on `<svg>` elements (that property only exists on HTML elements), so the `[hidden]` CSS rule
+      never matched; switched to `toggleAttribute('hidden', ...)`. **Account number save button**
+      (2026-09-03): the field previously had no explicit save step or confirmation — typing just
+      changed what the next request used, silently. Added a Save button beneath it that persists to
+      `localStorage.mobileNumber` (restored on load, replacing the hardcoded sample default) and
+      shows "Saved ✓" for 1.5s; Enter in the field saves too. Deliberately **omits**
       the docs' `?webrtcfilter=on` query param — that filter's allow-listed event set does not
       include `response.function_call_arguments.done`, which would silently break tool calling.
       Also added a live mic-level meter (Web Audio `AnalyserNode`) to the Voice panel, independent
@@ -167,6 +210,13 @@ so a session on any machine can pick up where the last one left off.
         privacy/security" (invented — no such policy exists). The voice prompt now lists exactly
         what the profile contains and says absent data must be reported as "not available in what I
         can see", never as a withheld/policy matter, and never by asking the caller for their name.
+      - **English as the starting default (2026-09-03)**: `voiceLang` now initializes to `'English'`
+        (was `null`) instead of only being set once something was detected — a call that opens with
+        a filler-strength utterance ("Hello.") now defaults to English rather than leaving the model
+        to pick with no `CURRENT CALLER LANGUAGE` line at all (the `established`-vs-not distinction
+        this replaced is gone; the filler thresholds in `detectLanguage()` already prevent a filler
+        from *flipping* a language once one is set, so a single simpler always-on threshold now
+        covers both the first turn and every turn after).
 - [x] **Phase 9 — LangGraph fallback**, built 2026-09-03 in response to real gaps a user hit live:
       questions like "what are my add-ons", "am I eligible for 5G", or "what roaming charges/offers
       do I have" are structurally ambiguous — the field genuinely exists in two different API
