@@ -144,6 +144,22 @@ so a session on any machine can pick up where the last one left off.
         through every `.failed` event).
       - Voice instructions also now ask for plain everyday spoken Hindi/Telugu/Tamil rather than
         formal "book" register — user feedback was that the literary phrasing was hard to follow.
+      - **Language switching is client-driven (2026-09-03).** Left to infer, the model kept the
+        *previous* turn's language when the caller switched (spoke Hindi, asked in Telugu, got Hindi
+        — once even announcing "your first question was in Hindi, so I'll stay in Hindi"). A
+        transcript-based hint didn't fix it because the transcript arrives *after* the answer has
+        started, so on the switch turn the model obeyed a stale hint. Now, when transcription is
+        on, the post-connect session sets `turn_detection.create_response=false`: the server commits
+        each utterance but does not answer. The browser (`index.html`, "caller-language protocol")
+        waits for the transcript, detects its script by Unicode block (Telugu/Tamil/Devanagari/
+        Arabic-script Hindi/Latin…; fillers like "Yeah."/"हाँ" don't count), keeps a session
+        language, and sends session.update with an explicit `CURRENT CALLER LANGUAGE:` line — on a
+        switch, "answer in the new language, then ask whether to continue in it" — followed by
+        `response.create`. One response at a time is enforced (a second trigger waits for
+        `response.done`), and a 2.5s fallback timer answers even if the transcript never comes.
+        Cost: ~1s extra per voice turn. Numbers (amounts, MB, dates, IMEI digits) are always spoken
+        in English regardless of language, per user request. Without transcription configured none
+        of this engages and the server auto-responds as before.
 - [x] **Phase 9 — LangGraph fallback**, built 2026-09-03 in response to real gaps a user hit live:
       questions like "what are my add-ons", "am I eligible for 5G", or "what roaming charges/offers
       do I have" are structurally ambiguous — the field genuinely exists in two different API

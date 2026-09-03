@@ -138,3 +138,30 @@ def test_function_name_to_intent_matches_tool_registry():
 def test_every_realtime_tool_has_a_mapped_intent():
     tool_names = {tool["name"] for tool in realtime.REALTIME_TOOLS}
     assert tool_names == set(realtime.FUNCTION_NAME_TO_INTENT.keys())
+
+
+@pytest.mark.asyncio
+async def test_server_auto_response_is_off_only_when_transcription_is_on(monkeypatch):
+    # With a transcript available the browser triggers each response itself so it
+    # can state the caller's language first; without one the server must keep
+    # auto-responding or the caller would get silence.
+    settings = get_settings()
+    monkeypatch.setattr(settings, "azure_openai_transcribe_deployment", "gpt-live-transcribe")
+
+    captured = {}
+
+    class CapturingClient(FakeAsyncClient):
+        async def post(self, url, json=None, headers=None):
+            captured["payload"] = json
+            return await super().post(url, json=json, headers=headers)
+
+    fake_client = CapturingClient(response=FakeResponse(200, {"value": "tok"}))
+    monkeypatch.setattr(realtime.httpx, "AsyncClient", lambda **kwargs: fake_client)
+
+    result = await realtime.create_realtime_session()
+
+    mint_td = captured["payload"]["session"]["audio"]["input"]["turn_detection"]
+    update_td = result.post_connect_update["session"]["audio"]["input"]["turn_detection"]
+    assert mint_td["create_response"] is True      # no transcript yet at mint time
+    assert update_td["create_response"] is False   # browser drives responses once transcription is on
+    assert "CURRENT CALLER LANGUAGE" in result.post_connect_update["session"]["instructions"]

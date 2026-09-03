@@ -447,7 +447,7 @@ STARTERS.forEach((s) => {
 let peerConnection = null, dataChannel = null, micStream = null;
 let micAudioContext = null, micMeterRafId = null;
 let pendingVoiceUserBubble = null;
-let sessionCfg = null, lastLangHint = null;
+let sessionCfg = null;
 
 function setVoiceUI(state, hint) {
   // state: 'off' | 'connecting' | 'on' | 'error'
@@ -490,7 +490,7 @@ async function startVoice() {
     const session = await sessionRes.json();
     if (!session.success) throw new Error(session.error || 'session failed');
     sessionCfg = session.post_connect_update || null;
-    lastLangHint = null;
+    resetVoiceLangState();
 
     peerConnection = new RTCPeerConnection();
     const remoteAudio = new Audio(); remoteAudio.autoplay = true;
@@ -546,7 +546,7 @@ function teardownVoice() {
   if (peerConnection) { try { peerConnection.close(); } catch (_) {} }
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
   dataChannel = null; peerConnection = null; micStream = null; pendingVoiceUserBubble = null;
-  sessionCfg = null; lastLangHint = null;
+  sessionCfg = null; resetVoiceLangState();
 }
 
 function stopVoice() {
@@ -559,12 +559,16 @@ function stopVoice() {
 voiceBtn.addEventListener('click', startVoice);
 voiceStopBtn.addEventListener('click', stopVoice);
 
-// ---- language nudge ----
-// The realtime model tends to keep the *previous* turn's language when the
-// caller switches mid-call (spoke Hindi, then asked in Telugu, got Hindi back).
-// We now have the caller's transcript, so detect its script by Unicode block
-// and, whenever it changes, re-send the session config with an explicit
-// "CURRENT CALLER LANGUAGE" line — a stated fact, not something to infer.
+// ---- caller-language protocol ----
+// With transcription on, the server no longer auto-answers after each
+// utterance (the backend sets turn_detection.create_response=false in the
+// post-connect session). The browser waits for the caller's transcript, works
+// out the language from its script, and only then sends session.update (with
+// an explicit CURRENT CALLER LANGUAGE line) followed by response.create. That
+// costs ~1s per turn but makes the language deterministic: the model is told,
+// not left to infer, and a stale hint can never override a switch (which is
+// exactly what happened when the hint was sent after the answer had started).
+// A fallback timer guarantees an answer even if the transcript never arrives.
 const SCRIPT_RANGES = [
   ['Telugu',    /[ఀ-౿]/g],
   ['Tamil',     /[஀-௿]/g],
@@ -583,16 +587,60 @@ function detectLanguage(text) {
     const n = (text.match(re) || []).length;
     if (n > bestCount) { best = lang; bestCount = n; }
   }
-  return bestCount >= 2 ? best : null;   // a single stray character isn't a signal
+  if (!best) return null;
+  // Fillers ("Yeah.", "ok", "हाँ") must not flip the session language.
+  if (best === 'English') {
+    const words = text.trim().split(/\s+/).filter(Boolean).length;
+    return (words >= 2 || bestCount >= 8) ? best : null;
+  }
+  return bestCount >= 5 ? best : null;
 }
-function maybeNudgeLanguage(transcript) {
-  const lang = detectLanguage(transcript || '');
-  if (!lang || lang === lastLangHint || !sessionCfg || !dataChannel || dataChannel.readyState !== 'open') return;
+
+let voiceLang = null;   // language the conversation is currently in
+let awaitingTranscript = false, responseActive = false, pendingTrigger = false, pendingLang = null, fallbackTimer = null;
+function resetVoiceLangState() {
+  voiceLang = null; awaitingTranscript = false; responseActive = false; pendingTrigger = false; pendingLang = null;
+  if (fallbackTimer) clearTimeout(fallbackTimer);
+  fallbackTimer = null;
+}
+function manualTurns() { return !!sessionCfg; }   // only when transcription is configured
+
+function onUtteranceCommitted() {
+  if (!manualTurns()) return;
+  awaitingTranscript = true;
+  if (fallbackTimer) clearTimeout(fallbackTimer);
+  fallbackTimer = setTimeout(() => {
+    if (awaitingTranscript) { logDebug('voice', 'no transcript within 2.5s — answering anyway'); triggerResponse(null); }
+  }, 2500);
+}
+function onCallerTranscript(transcript) {
+  if (!manualTurns() || !awaitingTranscript) return;
+  triggerResponse(detectLanguage(transcript || ''));
+}
+function languageDirective(lang) {
+  const numbers = 'Say every number, amount, date, IMEI and ID in English, whatever the sentence language.';
+  if (lang && voiceLang && lang !== voiceLang) {
+    const prev = voiceLang;
+    voiceLang = lang;
+    logDebug('voice', `language switch ${prev} -> ${lang}`);
+    return `CURRENT CALLER LANGUAGE: ${lang}. The caller just switched from ${prev} to ${lang}. ` +
+      `Answer this message in ${lang}, then add one short question in ${lang} asking whether to continue in ${lang} from now on. ` +
+      `Use ${lang} from the next turn unless they switch again. ${numbers}`;
+  }
+  if (lang && !voiceLang) { voiceLang = lang; logDebug('voice', 'language detected: ' + lang); }
+  if (voiceLang) return `CURRENT CALLER LANGUAGE: ${voiceLang}. Reply in ${voiceLang}. ${numbers}`;
+  return numbers;
+}
+function triggerResponse(lang) {
+  awaitingTranscript = false;
+  if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+  if (!dataChannel || dataChannel.readyState !== 'open') return;
+  if (responseActive) { pendingTrigger = true; pendingLang = lang; return; }   // one response at a time
   const update = JSON.parse(JSON.stringify(sessionCfg));   // full session, per the replace-not-merge finding
-  update.session.instructions += `\n\nCURRENT CALLER LANGUAGE: ${lang}. The caller's latest message was in ${lang} — reply in ${lang}, regardless of the language of earlier turns.`;
+  update.session.instructions = sessionCfg.session.instructions + '\n\n' + languageDirective(lang);
   dataChannel.send(JSON.stringify(update));
-  lastLangHint = lang;
-  logDebug('voice', 'language hint -> ' + lang);
+  dataChannel.send(JSON.stringify({ type: 'response.create' }));
+  responseActive = true;   // until response.done; stops a double trigger before response.created arrives
 }
 
 async function onRealtimeEvent(evt) {
@@ -606,18 +654,22 @@ async function onRealtimeEvent(evt) {
       // Placeholder for what you said; replaced by the transcript if one is configured.
       pendingVoiceUserBubble = addMessage('user', '🎤 Voice message', { }).body;
       return;
+    case 'input_audio_buffer.committed':
+      onUtteranceCommitted();
+      return;
     case 'conversation.item.input_audio_transcription.completed':
     case 'conversation.item.audio_transcription.completed':
       if (evt.transcript) {
         if (pendingVoiceUserBubble) { pendingVoiceUserBubble.textContent = evt.transcript; pendingVoiceUserBubble = null; }
         else addMessage('user', evt.transcript);
-        maybeNudgeLanguage(evt.transcript);
+        onCallerTranscript(evt.transcript);
       }
       return;
     case 'conversation.item.input_audio_transcription.failed': {
       const err = evt.error || {};
       logDebug('transcription failed', `type=${err.type} code=${err.code} message=${err.message}`);
       // Leave the "🎤 Voice message" placeholder in place — the voice reply itself is unaffected.
+      onCallerTranscript(null);   // still trigger the answer; language falls back to the session's
       return;
     }
     case 'output_audio_buffer.started':
@@ -633,6 +685,13 @@ async function onRealtimeEvent(evt) {
       return;
     case 'response.function_call_arguments.done':
       await handleFunctionCall(evt);
+      return;
+    case 'response.created':
+      responseActive = true;
+      return;
+    case 'response.done':
+      responseActive = false;
+      if (pendingTrigger) { pendingTrigger = false; triggerResponse(pendingLang); }
       return;
     case 'error':
       addMessage('assistant', evt.error?.message || JSON.stringify(evt), { tag: 'voice error', tagClass: 'err' });

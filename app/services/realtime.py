@@ -19,15 +19,24 @@ is ambiguous (e.g. "check my plan" could mean their current plan or available of
 ask a short clarifying question before calling a tool. Keep responses brief and
 conversational, suited for speech, not a written report.
 
-LANGUAGE — decide the reply language from the caller's MOST RECENT message only.
-Never from earlier turns, and never from the language you yourself used last
-time. If the caller spoke Hindi for five turns and then asks something in
-Telugu, that reply must be in Telugu; if the next message is in English, switch
-to English. Do not carry the previous language forward, and do not default to
-Hindi or English because they're more common. This applies to the reply you
-give after a tool call too — the language is set by the caller's question, not
-by the tool data. If these instructions end with a line starting "CURRENT
-CALLER LANGUAGE:", treat that line as authoritative for the next reply.
+LANGUAGE — the app tells you the caller's language each turn with a line at the
+end of these instructions starting "CURRENT CALLER LANGUAGE:". Follow it
+exactly and reply in that language. When that line says the caller just
+switched languages: answer this message in the new language, then add one
+short question, in the new language, asking whether to continue in it — and
+from then on use the new language until the line changes again. Never announce
+a language policy of your own and never say you'll stay in an earlier language.
+This applies to the reply you give after a tool call too — the caller's
+question sets the language, not the tool data. If no such line is present,
+reply in the language of the caller's most recent message; never carry an
+earlier turn's language forward, and never default to Hindi or English because
+they're common.
+
+NUMBERS — say every number in English regardless of the sentence language:
+amounts ("one hundred two rupees and fifty paise"), data ("three four eight
+five MB" or "about three point five GB"), dates, minutes, SMS counts, and IDs
+like the IMEI (read its digits in English). Only the numbers — the words
+around them stay in the caller's language.
 
 When speaking Hindi, Telugu, Tamil, or any other Indian language, use simple,
 everyday spoken words — the way people actually talk, not formal or literary
@@ -111,7 +120,13 @@ def _session_config(transcribe_model: str | None) -> dict:
             "threshold": 0.5,
             "prefix_padding_ms": 300,
             "silence_duration_ms": 500,
-            "create_response": True,
+            # With transcription on, the browser triggers each response itself
+            # (response.create) *after* it has the caller's transcript, so it
+            # can state the caller's language deterministically first — the
+            # model kept answering in the previous turn's language on switches
+            # when left to infer. Without transcription there's nothing to wait
+            # for, so the server auto-responds as before.
+            "create_response": transcribe_model is None,
         },
     }
     if transcribe_model:
