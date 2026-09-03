@@ -524,7 +524,13 @@ async function startVoice() {
     sessionCfg = session.post_connect_update || null;
     resetVoiceLangState();
 
-    peerConnection = new RTCPeerConnection();
+    // Without a STUN server the browser can only gather local ("host") ICE
+    // candidates, which fail to connect across most NATs (works by luck on
+    // simple home/hotspot networks, fails on stricter corporate NATs/firewalls
+    // — reported as stuck on "Requesting microphone" then ICE disconnected).
+    peerConnection = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    });
     const remoteAudio = new Audio(); remoteAudio.autoplay = true;
     peerConnection.ontrack = (e) => { remoteAudio.srcObject = e.streams[0]; logDebug('rtc', 'remote audio track'); };
     peerConnection.onconnectionstatechange = () => logDebug('rtc', 'connection ' + peerConnection.connectionState);

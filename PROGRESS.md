@@ -40,6 +40,16 @@ than a laptop/desk mic.
   This doesn't reduce the actual delay (that's an Azure API constraint) — it just gives the same
   "working on it" feedback chat already had. Not yet re-verified live on a real call with barge-in —
   do that before calling this closed.
+- **Voice stuck on "Requesting microphone…" then ICE disconnected/connection failed, on some laptops
+  only.** `RTCPeerConnection()` in `app/static/index.html` had zero ICE servers configured — no STUN,
+  no TURN. Without STUN, the browser can only gather local ("host") candidates, which only happen to
+  connect across NATs that are permissive enough (explains "works on some laptops, not others" — the
+  failing ones are presumably on stricter corporate NATs/firewalls). Added a public STUN server
+  (`stun:stun.l.google.com:19302`). Not yet re-verified on a previously-failing laptop — if it still
+  fails after this, the network is very likely blocking outbound UDP entirely (common on
+  Zscaler-style corporate proxies), which STUN can't fix — that needs a TURN relay (media relayed
+  over TCP/443), a real infrastructure addition (self-hosted coturn or a paid TURN service) worth
+  discussing with the user before building, not something to add speculatively.
 
 ## Where things stood (2026-09-03, end of prior session)
 
