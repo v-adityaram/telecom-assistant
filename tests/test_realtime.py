@@ -1,6 +1,7 @@
 import httpx
 import pytest
 
+from app.config import get_settings
 from app.services import realtime
 
 
@@ -46,6 +47,53 @@ async def test_create_realtime_session_success(monkeypatch):
     assert result.success is True
     assert result.client_secret == "ephemeral-token-123"
     assert result.realtime_url.endswith("/realtime/calls")
+
+
+@pytest.mark.asyncio
+async def test_transcription_is_never_sent_at_mint_time(monkeypatch):
+    # Confirmed live: Azure's client_secrets endpoint returns DeploymentNotFound
+    # when audio.input.transcription is requested at mint time. Transcription
+    # must only be enabled via a post-connect session.update (see voice.py /
+    # the frontend), never in this payload, even when a deployment is configured.
+    settings = get_settings()
+    monkeypatch.setattr(settings, "azure_openai_transcribe_deployment", "gpt-4o-mini-transcribe")
+
+    captured = {}
+
+    class CapturingClient(FakeAsyncClient):
+        async def post(self, url, json=None, headers=None):
+            captured["payload"] = json
+            return await super().post(url, json=json, headers=headers)
+
+    fake_client = CapturingClient(response=FakeResponse(200, {"value": "tok"}))
+    monkeypatch.setattr(realtime.httpx, "AsyncClient", lambda **kwargs: fake_client)
+
+    result = await realtime.create_realtime_session()
+
+    assert "transcription" not in captured["payload"]["session"]["audio"]["input"]
+    assert result.post_connect_update["type"] == "session.update"
+    update_session = result.post_connect_update["session"]
+    assert update_session["audio"]["input"]["transcription"] == {"model": "gpt-4o-mini-transcribe"}
+    # The full session must be re-stated, not just transcription — Azure's
+    # session.update replaces nested objects wholesale rather than merging,
+    # so a partial update risks silently resetting fields like voice/instructions.
+    assert update_session["audio"]["output"] == {"voice": "alloy"}
+    assert update_session["instructions"] == realtime.INSTRUCTIONS
+    assert update_session["tools"] == realtime.REALTIME_TOOLS
+    assert update_session["type"] == "realtime"
+
+
+@pytest.mark.asyncio
+async def test_post_connect_update_is_none_when_transcription_unconfigured(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "azure_openai_transcribe_deployment", "")
+
+    fake_client = FakeAsyncClient(response=FakeResponse(200, {"value": "tok"}))
+    monkeypatch.setattr(realtime.httpx, "AsyncClient", lambda **kwargs: fake_client)
+
+    result = await realtime.create_realtime_session()
+
+    assert result.post_connect_update is None
 
 
 @pytest.mark.asyncio

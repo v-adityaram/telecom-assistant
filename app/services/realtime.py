@@ -22,7 +22,14 @@ conversational, suited for speech, not a written report.
 Always reply in the same language the caller just spoke, whatever it is (Telugu,
 Hindi, English, or any other language) — never default to Hindi or English just
 because it's more common; match the caller's actual language on every turn, even
-if it changes partway through the call."""
+if it changes partway through the call.
+
+When speaking Hindi, Telugu, Tamil, or any other Indian language, use simple,
+everyday spoken words — the way people actually talk, not formal or literary
+"book" vocabulary/grammar. Prefer common words over Sanskrit-heavy or
+formal-register ones (e.g. plain conversational Hindi over shuddh/literary
+Hindi). Short, easy sentences — this is a phone call, not a written
+announcement."""
 
 # Zero-argument tools: the model can only request an intent by name, never
 # supply parameters (e.g. a phone number) — mobileNumber stays server-side,
@@ -76,16 +83,21 @@ class RealtimeSessionResult(BaseModel):
     client_secret: str | None = None
     realtime_url: str | None = None
     error: str | None = None
+    # A full "session.update" event for the browser to send once connected,
+    # present only when transcription is configured. Deliberately the FULL
+    # session (instructions, tools, voice, turn_detection — not just the
+    # transcription field) — Azure's session.update appears to replace nested
+    # objects wholesale rather than deep-merge them, so omitting any field
+    # here risks silently resetting it. Confirmed live: sending only the
+    # transcription field reset the voice to something other than the one
+    # fixed at mint time. Built from the exact same _session_config() as the
+    # mint-time payload so there is a single source of truth — nothing can
+    # drift between the two the way the voice did.
+    post_connect_update: dict | None = None
 
 
-async def create_realtime_session() -> RealtimeSessionResult:
-    """Mints a short-lived ephemeral token via Azure OpenAI's GA realtime
-    endpoint. The long-lived AZURE_OPENAI_API_KEY never leaves this backend;
-    only the ephemeral token (and the public realtime_url) go to the browser.
-    """
+def _session_config(transcribe_model: str | None) -> dict:
     settings = get_settings()
-    url = f"{settings.azure_openai_endpoint}/realtime/client_secrets"
-
     audio_input: dict = {
         # Explicit even though server_vad is the default — makes the
         # automatic end-of-speech -> response behavior unambiguous.
@@ -97,22 +109,33 @@ async def create_realtime_session() -> RealtimeSessionResult:
             "create_response": True,
         },
     }
-    if settings.azure_openai_transcribe_deployment:
-        # Azure requires a deployment name here, not a bare model name like
-        # "whisper-1" — only send this if the user configured one, since a
-        # wrong deployment name can make the whole session config reject.
-        audio_input["transcription"] = {"model": settings.azure_openai_transcribe_deployment}
+    if transcribe_model:
+        audio_input["transcription"] = {"model": transcribe_model}
 
-    payload = {
-        "session": {
-            "type": "realtime",
-            "model": settings.azure_openai_realtime_deployment,
-            "instructions": INSTRUCTIONS,
-            "audio": {"input": audio_input, "output": {"voice": "alloy"}},
-            "tools": REALTIME_TOOLS,
-            "tool_choice": "auto",
-        }
+    return {
+        "type": "realtime",
+        "model": settings.azure_openai_realtime_deployment,
+        "instructions": INSTRUCTIONS,
+        "audio": {"input": audio_input, "output": {"voice": "alloy"}},
+        "tools": REALTIME_TOOLS,
+        "tool_choice": "auto",
     }
+
+
+async def create_realtime_session() -> RealtimeSessionResult:
+    """Mints a short-lived ephemeral token via Azure OpenAI's GA realtime
+    endpoint. The long-lived AZURE_OPENAI_API_KEY never leaves this backend;
+    only the ephemeral token (and the public realtime_url) go to the browser.
+    """
+    settings = get_settings()
+    url = f"{settings.azure_openai_endpoint}/realtime/client_secrets"
+
+    # Transcription is deliberately excluded from the mint-time payload even
+    # though the deployment name is valid — Azure's client_secrets endpoint
+    # fails to resolve a transcription deployment there (DeploymentNotFound,
+    # confirmed live). It's enabled after connecting instead, via
+    # post_connect_update below.
+    payload = {"session": _session_config(transcribe_model=None)}
     headers = {"api-key": settings.azure_openai_api_key, "Content-Type": "application/json"}
 
     try:
@@ -125,10 +148,18 @@ async def create_realtime_session() -> RealtimeSessionResult:
             logger.warning("realtime_session_missing_client_secret")
             return RealtimeSessionResult(success=False, error="realtime_session_invalid_response")
 
+        post_connect_update = None
+        if settings.azure_openai_transcribe_deployment:
+            post_connect_update = {
+                "type": "session.update",
+                "session": _session_config(transcribe_model=settings.azure_openai_transcribe_deployment),
+            }
+
         return RealtimeSessionResult(
             success=True,
             client_secret=client_secret,
             realtime_url=f"{settings.azure_openai_endpoint}/realtime/calls",
+            post_connect_update=post_connect_update,
         )
 
     except httpx.TimeoutException:

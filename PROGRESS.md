@@ -113,6 +113,37 @@ so a session on any machine can pick up where the last one left off.
       of Azure entirely — useful for isolating "browser isn't capturing audio" from "Azure isn't
       responding" if voice ever seems dead again. Tested with mocks: `tests/test_realtime.py`,
       `tests/test_voice_api.py`.
+      **Caller transcription (captions) — enabled 2026-09-03**, and it was a fight; the details
+      matter for whoever touches this next:
+      - **True word-by-word live captions are not possible on Azure.** Microsoft support confirms
+        Azure's Realtime API never emits `conversation.item.input_audio_transcription.delta`
+        (OpenAI's own API does); Azure only sends the final transcript once a turn ends. So captions
+        appear right after you stop speaking, not while you speak. Real live captions would need
+        Azure AI Speech running in parallel on the same mic audio — a separate, bigger integration,
+        deliberately not started.
+      - **Requesting transcription at mint time fails.** Putting `audio.input.transcription` in the
+        `client_secrets` payload made every turn emit `input_audio_transcription.failed` with
+        `code=DeploymentNotFound`, even though the deployment name was verified correct in the
+        portal. Known Azure issue. Fix: mint without it, then send a `session.update` over the data
+        channel once connected — `create_realtime_session()` returns it as `post_connect_update`.
+      - **`session.update` must carry `session.type`** ("Missing required parameter" otherwise, despite
+        docs calling all fields optional) — and it appears to **replace nested objects wholesale
+        rather than deep-merge**: sending only the transcription field reset the output voice to
+        something other than `alloy`, which a user noticed as "the voice keeps changing". So
+        `post_connect_update` re-states the *entire* session (instructions, tools, voice,
+        turn_detection, transcription), built from the same `_session_config()` as the mint payload
+        — single source of truth, nothing can drift between the two again.
+      - **Model**: started with `gpt-4o-mini-transcribe` ($0.003/min) — worked, but rendered Hindi
+        in Urdu script and mis-detected Telugu. `gpt-realtime-whisper` (the purpose-built model)
+        isn't available on this subscription. Switched to **`gpt-live-transcribe`** (~$0.017/min,
+        GA, one of the two models Microsoft documents for real-time transcription). Its default
+        quota is only **10 requests/min** — each spoken turn is one request, so rapid back-and-forth
+        can hit it; raise the quota in the portal if that shows up as a rate-limit `.failed` code.
+      - Also transcription failures are **cosmetic only**: the voice model understands audio
+        natively and answers correctly whether or not the caption succeeds (tool calls kept working
+        through every `.failed` event).
+      - Voice instructions also now ask for plain everyday spoken Hindi/Telugu/Tamil rather than
+        formal "book" register — user feedback was that the literary phrasing was hard to follow.
 - [x] **Phase 9 — LangGraph fallback**, built 2026-09-03 in response to real gaps a user hit live:
       questions like "what are my add-ons", "am I eligible for 5G", or "what roaming charges/offers
       do I have" are structurally ambiguous — the field genuinely exists in two different API

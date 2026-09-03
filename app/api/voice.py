@@ -13,6 +13,7 @@ class VoiceSessionResponse(BaseModel):
     client_secret: str | None = None
     realtime_url: str | None = None
     error: str | None = None
+    post_connect_update: dict | None = None
 
 
 @router.post("/api/voice/session", response_model=VoiceSessionResponse)
