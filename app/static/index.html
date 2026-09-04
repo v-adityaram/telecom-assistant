@@ -116,12 +116,18 @@
        going empty/unscrollable at 100% browser zoom while 75-80% looked fine.
        A fixed height sidesteps that guesswork entirely — always this tall,
        always independently scrollable, never squeezed by its siblings. */
-    height: 200px; flex-shrink: 0; overflow-y: auto;
+    height: 280px; flex-shrink: 0; overflow-y: auto;
     display: flex; flex-direction: column; gap: 1px; padding: 0 4px 8px;
   }
   .recent-item {
-    display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 8px;
-    color: var(--text); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    /* flex-shrink:0 is load-bearing, not decoration: without it, a column
+       flex container compresses its children shorter than their natural
+       text height once they collectively exceed the list's height, instead
+       of properly overflowing/scrolling — clips the bottom of every row's
+       text (descenders like the tail of "p" go missing first) rather than
+       just showing a scrollbar. */
+    display: block; width: 100%; flex-shrink: 0; text-align: left; padding: 8px 10px; border-radius: 8px;
+    color: var(--text); font-size: 13px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .recent-item:hover { background: var(--surface); }
   .recent-item.active { background: var(--surface-2); font-weight: 600; }

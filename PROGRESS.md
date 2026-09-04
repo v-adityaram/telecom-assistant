@@ -6,6 +6,17 @@ so a session on any machine can pick up where the last one left off.
 
 ## Where things stand (2026-09-04, updated)
 
+**Update 27 — Recents sidebar: rows clipping the bottom of their own text (descenders like the
+tail of "p" going missing), same root cause class as Update 22.** `.recents-list` is a
+`flex-direction: column` container; its children (`.recent-item` buttons) never had
+`flex-shrink: 0`. Once enough conversations existed that they didn't all fit in the list's `200px`
+height, the flex column **compressed each row shorter than its natural text height** instead of
+properly overflowing/scrolling — clips a slice off the bottom of every row's text, not just an edge
+row. Fixed: `flex-shrink: 0` added to `.recent-item` (the actual fix — forces the container to
+scroll instead of squeezing children), plus `line-height: 1.4` for more natural breathing room and
+`.recents-list` height raised `200px` -> `280px` per direct user request for more visible rows.
+Not yet re-verified live with a real conversation list at that length.
+
 **Update 26 — iPhone-specific echo: assistant's own voice leaking into the mic, not seen on
 Android.** Direct user report: only some iPhones (16 confirmed), Android unaffected. Root cause is
 most likely Safari/iOS WebKit's WebRTC echo-cancellation being less reliable than Chrome's
