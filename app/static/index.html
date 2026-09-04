@@ -605,7 +605,7 @@ STARTERS.forEach((s) => {
 // ============================================================
 // Voice (WebRTC → realtime model → /api/voice/tool → same tool layer)
 // ============================================================
-let peerConnection = null, dataChannel = null, micStream = null;
+let peerConnection = null, dataChannel = null, micStream = null, remoteAudioEl = null;
 let micAudioContext = null, micMeterRafId = null;
 let pendingVoiceUserBubble = null;
 let pendingVoiceAssistantMsg = null;   // { el, body } — dots shown while audio plays, ahead of the transcript
@@ -722,8 +722,18 @@ async function startVoice() {
     peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
     });
-    const remoteAudio = new Audio(); remoteAudio.autoplay = true;
-    peerConnection.ontrack = (e) => { remoteAudio.srcObject = e.streams[0]; logDebug('rtc', 'remote audio track'); };
+    // Attached to the DOM (hidden) rather than left as a detached element —
+    // iOS Safari's WebRTC audio-session/echo-cancellation handling has been
+    // unreliable for playback that isn't part of the document, reported as
+    // the assistant's own voice leaking back into the mic on some iPhones
+    // (not seen on Android Chrome, which has a more consistent AEC
+    // implementation regardless of DOM attachment).
+    remoteAudioEl = new Audio();
+    remoteAudioEl.autoplay = true;
+    remoteAudioEl.playsInline = true;
+    remoteAudioEl.style.display = 'none';
+    document.body.appendChild(remoteAudioEl);
+    peerConnection.ontrack = (e) => { remoteAudioEl.srcObject = e.streams[0]; logDebug('rtc', 'remote audio track'); };
     peerConnection.onconnectionstatechange = () => logDebug('rtc', 'connection ' + peerConnection.connectionState);
     peerConnection.oniceconnectionstatechange = () => logDebug('rtc', 'ice ' + peerConnection.iceConnectionState);
 
@@ -776,8 +786,9 @@ function teardownVoice() {
   if (dataChannel) { try { dataChannel.close(); } catch (_) {} }
   if (peerConnection) { try { peerConnection.close(); } catch (_) {} }
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
+  if (remoteAudioEl) { try { remoteAudioEl.pause(); remoteAudioEl.srcObject = null; remoteAudioEl.remove(); } catch (_) {} }
   if (pendingVoiceAssistantMsg) { pendingVoiceAssistantMsg.el.remove(); pendingVoiceAssistantMsg = null; }
-  dataChannel = null; peerConnection = null; micStream = null; pendingVoiceUserBubble = null;
+  dataChannel = null; peerConnection = null; micStream = null; remoteAudioEl = null; pendingVoiceUserBubble = null;
   sessionCfg = null; resetVoiceLangState();
 }
 

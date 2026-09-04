@@ -6,6 +6,21 @@ so a session on any machine can pick up where the last one left off.
 
 ## Where things stand (2026-09-04, updated)
 
+**Update 26 — iPhone-specific echo: assistant's own voice leaking into the mic, not seen on
+Android.** Direct user report: only some iPhones (16 confirmed), Android unaffected. Root cause is
+most likely Safari/iOS WebKit's WebRTC echo-cancellation being less reliable than Chrome's
+(especially over the loudspeaker, and especially compared to Android Chrome's more mature/consistent
+AEC implementation) — a known, longstanding platform gap, not really fixable purely from a web app;
+native apps get far more control over this via `AVAudioSession`. One real contributing factor found
+in this app's own code and fixed regardless: `remoteAudioEl` (the assistant's audio) was a detached
+`new Audio()` element, never attached to the DOM — WebKit's audio-session handling has documented
+inconsistencies for playback outside the document. Now created hidden but DOM-attached (`playsInline`
+set too, relevant on iOS), and properly cleaned up (`.pause()`, `srcObject = null`, `.remove()`) in
+`teardownVoice()` so repeat calls don't leak elements. **Set realistic expectations**: this may
+reduce the iPhone-specific leak but is unlikely to fully eliminate it — the practical, reliable fix
+for affected iPhones is headphones/earbuds (removes the acoustic speaker->mic leak path entirely,
+making AEC quality moot). Not yet retested live on an affected iPhone 16.
+
 Large session — Cosmos DB actually provisioned and wired up end-to-end, real conversation
 memory, a new purchase-demo intent, a full frontend redesign, three real voice bugs found and
 fixed, and the ChatGPT-style "Recents" sidebar built. Everything below was verified live against
