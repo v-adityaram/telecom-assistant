@@ -4,7 +4,139 @@ Tracks where this build stands against `docs/telecom_ai_assistant_implementation
 Read that file first for the full architecture and rules — this file is just status + open decisions,
 so a session on any machine can pick up where the last one left off.
 
-## Where things stand (2026-09-03, updated)
+## Where things stand (2026-09-04, updated)
+
+Large session — Cosmos DB actually provisioned and wired up end-to-end, real conversation
+memory, a new purchase-demo intent, a full frontend redesign, three real voice bugs found and
+fixed, and the ChatGPT-style "Recents" sidebar built. Everything below was verified live against
+the real Azure OpenAI + Cosmos DB + telecom API, both locally and on the deployed VM, not just
+unit-tested — see each entry for how.
+
+**Update 15 — Cosmos DB provisioned; conversation memory (F-003) built and wired in.**
+Account `telecom-assistant`, database `telecom-poc-db`, container `conversations`, partition key
+`/mobileNumber` (confirmed correct in Data Explorer before any data was written — this is the one
+field that can never change after container creation). `app/services/conversation_store.py` is the
+whole persistence layer: `is_enabled()`, `upsert_conversation()`, `get_conversation()`,
+`list_conversations()`, `delete_conversation()` — every function no-ops safely if
+`COSMOS_CONNECTION_STRING` isn't set, so chat/voice behave identically whether or not this is
+configured. `session_id` (already sent by the frontend on every turn) doubles as the Cosmos
+`conversation_id` — no new identifier needed. `app/api/chat.py` loads that conversation's prior
+messages before routing and persists the new turn after answering, for every response type
+(answer, clarification, error) via `asyncio.to_thread()` (the Cosmos SDK is synchronous; without
+this it would block the event loop on every turn). History (capped to the last 20 messages) is
+threaded into `app/services/llm.py::classify_intent()`, `app/services/complex_flow.py`'s answer
+node, and `app/services/purchase_flow.py` — real prior turns as actual `{role, content}` messages
+in the `messages` array, never folded into the system prompt string. Verified live: a multi-turn
+conversation asking balance → device → "what all did I ask till now" correctly summarized real
+history, both locally and on the VM (one genuine test-methodology bug found along the way, not a
+code bug — a crashed test script left a half-written turn in Cosmos, and a rerun with the same
+session id correctly *added to* it rather than losing it, which is exactly the durability this was
+built for).
+
+**Update 16 — Router taught to use that history for single-intent turns too, not just COMPLEX.**
+`app/router/intent_router.py::route_intent()` and `classify_intent()` now also take `history`.
+Needed because F-003 initially only gave history to the COMPLEX flow — genuine follow-ups that
+don't obviously need multi-tool COMPLEX handling ("why is my data low" right after balance was
+shown, "how good is that offer", "details") were still falling into the generic clarification
+fallback since the *classifier itself* couldn't see what was said two turns ago. Fixed with a
+general rule in `llm.py`'s prompt (judge by meaning, not exact wording — informal phrasings count
+the same as the given examples) rather than one-off string matches. **Tested for real
+generalization, not just the literal examples fed into the prompt**: two rounds of live testing
+with wording never used anywhere in the prompt ("that seems like barely anything left, how come",
+"grab me the international roaming one", "worth getting?", "put me down for the weekend pack",
+"feels like it vanished fast, any idea why") — most generalized correctly. Two real gaps found and
+left as known, not silently claimed fixed: "so what am I actually getting" still misfires to
+clarification sometimes, and once (asking "elaborate" about a just-completed demo purchase) the
+COMPLEX answer node contradicted its own prior turn, claiming it hadn't actually captured the
+order. Consistent with the temperature-1 wobble already documented below — not fully eliminable by
+more prompting, a POC-level limitation worth knowing about, not chasing indefinitely.
+
+**Update 17 — BUY_OFFER: a new demo purchase intent.** `app/services/purchase_flow.py` +
+`BUY_OFFER_INTENT` in `app/router/confidence.py` (special-cased like `COMPLEX_INTENT` — not a
+`TOOL_REGISTRY` entry, since it's not a real telecom-API lookup). On a match it always **re-fetches
+real, current offers first**, then asks the model only to pick *which* offer id is meant
+(structured JSON output, matched against history so "buy the 2nd one" resolves against whatever
+offers list was shown earlier) — the confirmation text itself (name, price) is built
+deterministically from that real data afterward, never freeform LLM text, so a price can never be
+invented. Ends with a disclosed dummy payment link, matching the reference design the user showed
+("this is not a real purchase"). Verified live: both an ordinal reference ("buy the 2nd one") and a
+direct name ("the weekend entertainment pack") correctly resolved to the right real offer, on both
+the fast path and the router's now-history-aware classification.
+
+**Update 18 — Frontend redesign: moved off the ChatGPT look entirely.** New warm gold/amber palette
+(light + dark, WCAG-checked — AA minimum, mostly AAA) replacing the neutral gray/black scheme;
+gold header band instead of a blended-in topbar; warmed sidebar tone instead of near-black; the
+empty-state greeting is now a gold-bordered card with a folded-corner accent instead of plain
+centered text; starter chips became a 2×3 "Quick actions" card grid (one per tool, title + subtitle
++ arrow) instead of pill buttons; composer restructured into separate labeled "Talk" / input /
+"Send →" pills instead of one icon-only ChatGPT-style bar. Real bugs found and fixed while building
+this, not just cosmetic: the dark-mode theme-toggle icon was unreadable (forced to a color meant
+only for the gold header band, invisible against the button's own dark surface); the quick-action
+grid overflowed off-screen on narrow viewports (classic CSS Grid issue — a grid item's default
+`min-width:auto` lets text force a track wider than available space; fixed with
+`minmax(0, 1fr)` + explicit `min-width:0` + ellipsis truncation, confirmed via direct
+`scrollWidth`/`innerWidth` measurement, not just a screenshot); a leftover hardcoded blue/purple
+gradient on the brand dot/avatar was replaced with the new accent gradient; a latent bug
+(`var(--fg)`, a token that never existed) in the voice-overlay CSS was fixed to `var(--text)`.
+
+**Update 19 — Three real voice bugs found and fixed.**
+1. **The "Conversation already has an active response in progress" API error and duplicate
+   spoken answers**: `handleFunctionCall()`'s `response.create` (after a tool call) was completely
+   unguarded, while the language-switch turn logic already serialized itself. When a tool-call
+   continuation raced against a response Azure hadn't yet confirmed finished (a real,
+   network-timing-dependent race — explaining why it was intermittent, not constant), the unguarded
+   call collided and got rejected, sometimes leaving a turn answered twice. Fixed by routing *every*
+   `response.create` in `app/static/index.html` through one `whenResponseFree()` queue. Proven
+   correct by simulating the exact race in an isolated Node script (not just reasoning about it).
+2. **No real interruption/barge-in**: `input_audio_buffer.speech_started` updated the UI but never
+   actually stopped the assistant's in-progress response. Now sends `response.cancel` when the
+   caller starts talking mid-response, and drops anything queued behind that now-dead response so
+   nothing tries to continue it afterward.
+3. **Dynamic VAD sensitivity**: `turn_detection.threshold` is now pushed to `0.9` while the
+   assistant is speaking (so its own audio/echo doesn't false-trigger a self-interruption, while a
+   genuinely louder deliberate interruption still clears it) and back to `0.8` the instant it's
+   idle (maximizing responsiveness when nothing is competing acoustically), via live
+   `session.update` calls on `output_audio_buffer.started`/`stopped`.
+   All three verified by simulating the exact event sequences in an isolated script (queueing,
+   draining, threshold changes, no redundant sends) — genuine WebRTC/microphone behavior still
+   needs a real call to confirm end-to-end, which this session's environment can't drive.
+
+**Update 20 — Transcription sync research (not built, informational).** Confirmed via current Azure
+docs: the conversational model (`gpt-realtime-1.5`) can never itself serve as the transcription
+model — Azure's `input_audio_transcription.model` architecturally requires a separate dedicated
+transcription-model deployment, by design, not a gap on our end. But Azure now documents a
+dedicated **"transcription session" type** (`session.type: "transcription"`) built specifically for
+streaming transcript *deltas* (word-by-word), unlike the "final text only after the utterance ends"
+behavior this app is stuck with today via the bolted-on `input_audio_transcription` in the
+voice-agent session. Getting real synced captions would mean a **second parallel WebRTC
+connection** just for captions — genuine new scope, not a quick config change. Not started; worth
+scoping properly before committing to it.
+
+**Update 21 — F-004 (Persistent History) sidebar: built, the "Recents" panel now works.**
+`app/api/conversations.py` — `GET /api/conversations?mobile_number=` (list, newest first,
+auto-derived titles) and `GET /api/conversations/{id}?mobile_number=` (full message history, 404 if
+missing), both backed by the Cosmos layer from Update 15. Frontend: a real Recents section replaces
+the old empty sidebar spacer — populates on load and after every sent message, click any item to
+replay it into the thread and **continue that same conversation** (same `session_id`, so new
+messages append to its real Cosmos history rather than starting fresh), active item highlighted,
+switching the account number refreshes the list (conversations are scoped per number — the
+partition key). Verified live end-to-end: created real conversations, listed them, clicked one, and
+watched a full multi-turn conversation from earlier in the session replay correctly in order.
+**Known simplification, not a bug**: replayed messages don't show their original intent pill
+(Cosmos only stores `{role, content}`, not the tag) — renders as plain text on reload.
+
+**Update 22 — Sidebar layout bug: Recents collapsing to empty at 100% browser zoom.** Real bug, not
+cosmetic: `.recents-list` used `max-height` inside a flex column that also scrolls — a CSS gotcha
+where a flex item's automatic minimum height resolves to 0 once any ancestor's `overflow` isn't
+`visible`, which the sidebar's own `overflow-y:auto` (added earlier the same session to fix a
+different cramping issue) triggered at some viewport heights but not others, explaining why 75-80%
+zoom looked fine but 100% didn't. Fixed by giving `.recents-list` a **fixed height (200px) with
+`flex-shrink:0`** instead of a flexible one — sidesteps the collapse entirely regardless of zoom or
+viewport size. Also removed the sidebar's redundant "Appearance" System/Light/Dark segmented
+control (the top-right theme toggle already covers it) per direct request, freeing real vertical
+space and simplifying `applyTheme()`. Stress-tested at 600px/650px/700px/800px viewport heights —
+Recents shows real, readable items every time now, never empty. Mobile's `@media (max-width:860px)`
+block was not touched.
 
 **Update 7 (handoff — this session is moving to a different laptop):** `REALTIME_VAD_THRESHOLD`
 was pushed to `0.7` (Update 6), tested live, **still not enough** — loud background noise still
