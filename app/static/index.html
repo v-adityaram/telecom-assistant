@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Telecom Assistant</title>
-<meta name="theme-color" content="#f7f7f8" id="themeColor">
+<meta name="theme-color" content="#f4f2ec" id="themeColor">
 <script>
   // Runs before first paint so there's no flash of the wrong theme.
   // 'system' (no stored choice) follows the OS preference.
@@ -20,45 +20,47 @@
      color in the page goes through a token so both themes stay complete. */
   :root {
     color-scheme: light;
-    --bg: #f7f7f8;
-    --sidebar: #ececee;
+    --bg: #f4f2ec;
+    --sidebar: #fff6da;
     --surface: #ffffff;
-    --surface-2: #e6e6ea;
-    --border: #d6d6dc;
-    --border-strong: #9a9aa3;
-    --text: #1c1c1e;
-    --muted: #62626a;
-    --accent: #1c1c1e;
-    --accent-fg: #ffffff;
-    --accent-hover: #3a3a3f;
-    --user-bubble: #e6e6ea;
+    --surface-2: #f6f1e2;
+    --border: #e5decb;
+    --border-strong: #c9bd98;
+    --text: #1c1a12;
+    --muted: #736b52;
+    --accent: #ffc72c;
+    --accent-fg: #1c1a12;
+    --accent-hover: #ffd35c;
+    --user-bubble: #f6f1e2;
     --ok: #15803d;
     --warn: #b45309;
     --err: #dc2626;
     --err-fg: #ffffff;
-    --debug-text: #3f3f46;
-    --shadow: 0 8px 30px rgba(0,0,0,.12);
+    --wave: #e3b567;
+    --debug-text: #4a4636;
+    --shadow: 0 8px 30px rgba(28,26,18,.12);
     --radius: 16px;
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --bg: #212121;
-    --sidebar: #171717;
-    --surface: #2f2f2f;
-    --surface-2: #3a3a3a;
-    --border: #3d3d3d;
-    --border-strong: #6b6b6b;
-    --text: #ececec;
-    --muted: #9b9b9b;
-    --accent: #ffffff;
-    --accent-fg: #000000;
-    --accent-hover: #dddddd;
-    --user-bubble: #2f2f2f;
+    --bg: #17140d;
+    --sidebar: #1f1a10;
+    --surface: #241f14;
+    --surface-2: #2e281a;
+    --border: #3a331f;
+    --border-strong: #5c5133;
+    --text: #f3ede0;
+    --muted: #ab9f83;
+    --accent: #f0c43a;
+    --accent-fg: #1a1608;
+    --accent-hover: #f7d666;
+    --user-bubble: #2e281a;
     --ok: #4ade80;
     --warn: #fbbf24;
     --err: #f87171;
     --err-fg: #000000;
-    --debug-text: #bdbdbd;
+    --wave: #e2c084;
+    --debug-text: #cabf9e;
     --shadow: 0 8px 30px rgba(0,0,0,.5);
   }
   * { box-sizing: border-box; }
@@ -78,10 +80,11 @@
   .sidebar {
     width: 260px; flex-shrink: 0; background: var(--sidebar);
     display: flex; flex-direction: column; padding: 14px 12px; gap: 6px;
+    overflow-y: auto;   /* the whole sidebar scrolls if a short browser viewport can't fit it all */
     transition: transform .2s ease;
   }
   .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 6px 8px 14px; }
-  .brand .dot { width: 22px; height: 22px; border-radius: 50%; background: linear-gradient(135deg,#7dd3fc,#818cf8); }
+  .brand .dot { width: 22px; height: 22px; border-radius: 50%; background: linear-gradient(135deg,var(--accent),var(--accent-hover)); }
   .side-btn {
     display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
     padding: 9px 10px; border-radius: 10px; color: var(--text);
@@ -104,21 +107,88 @@
   .pill.on { color: var(--ok); } .pill.on::before { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
   .pill.busy { color: var(--warn); } .pill.busy::before { background: var(--warn); }
   .pill.err { color: var(--err); } .pill.err::before { background: var(--err); }
-  .grow { flex: 1; }
-  .footer { font-size: 11px; color: var(--muted); padding: 8px; line-height: 1.4; }
+  .recents-head { padding-bottom: 2px; flex-shrink: 0; }
+  .recents-list {
+    /* Fixed height + flex-shrink:0, not flex/max-height — a flex child inside
+       a scrolling column container can otherwise collapse toward zero height
+       at certain viewport sizes (its automatic min-height resolves to 0 once
+       any ancestor's overflow isn't visible), which showed up as this list
+       going empty/unscrollable at 100% browser zoom while 75-80% looked fine.
+       A fixed height sidesteps that guesswork entirely — always this tall,
+       always independently scrollable, never squeezed by its siblings. */
+    height: 200px; flex-shrink: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 1px; padding: 0 4px 8px;
+  }
+  .recent-item {
+    display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 8px;
+    color: var(--text); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .recent-item:hover { background: var(--surface); }
+  .recent-item.active { background: var(--surface-2); font-weight: 600; }
+  .recents-empty { font-size: 12px; color: var(--muted); padding: 4px 10px; }
+  .footer { font-size: 11px; color: var(--muted); padding: 8px; line-height: 1.4; flex-shrink: 0; }
 
   /* ---------- main ---------- */
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
-  .topbar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
-  .topbar .title { font-weight: 600; color: var(--muted); }
+  .topbar {
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+    background: var(--accent); color: var(--accent-fg);
+  }
+  .topbar .title { font-weight: 700; color: var(--accent-fg); }
+  .topbar .icon-btn { color: var(--accent-fg); }
+  .topbar .icon-btn:hover { background: rgba(0,0,0,.08); }
   #sidebarToggle { display: none; padding: 6px; border-radius: 8px; }
-  #sidebarToggle:hover { background: var(--surface); }
 
-  .thread { flex: 1; overflow-y: auto; padding: 0 16px; }
+  .thread { flex: 1; overflow-y: auto; padding: 0 16px; position: relative; }
+
+  .voice-overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); opacity: 0; pointer-events: none; z-index: 5;
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    transition: opacity .25s ease;
+  }
+  .voice-overlay.show { opacity: .9; pointer-events: auto; }
+  .voice-overlay .toast {
+    display: flex; align-items: center; gap: 10px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 999px; padding: 12px 22px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.25); font-size: 14px; color: var(--text);
+  }
+  .voice-overlay .pulse-dot {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--ok); flex: none;
+    animation: voicePulse 1.2s ease-in-out infinite;
+  }
+  @keyframes voicePulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.6); opacity: .4; } }
   .thread-inner { max-width: 760px; margin: 0 auto; padding-bottom: 24px; }
 
-  .empty { text-align: center; padding: 18vh 0 40px; }
-  .empty h1 { font-size: 28px; font-weight: 500; margin: 0 0 24px; }
+  .empty { padding: 3vh 0 16px; }
+  .hero-card {
+    position: relative; max-width: 560px; margin: 0 auto 16px; text-align: left;
+    background: var(--surface); border: 2px solid var(--accent); border-radius: 16px;
+    padding: 14px 20px; overflow: hidden;
+  }
+  .hero-card::after {
+    content: ""; position: absolute; top: 0; right: 0; width: 0; height: 0;
+    border-style: solid; border-width: 0 20px 20px 0;
+    border-color: transparent var(--accent) transparent transparent;
+  }
+  .hero-card h1 { font-size: 17px; font-weight: 700; margin: 0 0 3px; }
+  .hero-card p { margin: 0; font-size: 13px; color: var(--muted); }
+  .quick-label {
+    font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); max-width: 560px; margin: 0 auto 6px; padding: 0 4px;
+  }
+  .quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; max-width: 560px; margin: 0 auto; }
+  .query-card {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px;
+    min-width: 0; width: 100%;
+  }
+  .query-card:hover { border-color: var(--accent); background: var(--surface-2); }
+  .query-card .qc-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .query-card .qc-title { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .query-card .qc-sub { font-size: 11px; color: var(--muted); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .query-card .qc-arrow { flex-shrink: 0; width: 16px; height: 16px; color: var(--accent); }
+
   .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   .chip {
     padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border);
@@ -133,7 +203,7 @@
   .msg.assistant .bubble { padding: 4px 0; }
   .msg.assistant .avatar {
     width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; margin-top: 4px;
-    background: linear-gradient(135deg,#7dd3fc,#818cf8); display: grid; place-items: center;
+    background: linear-gradient(135deg,var(--accent),var(--accent-hover)); display: grid; place-items: center;
   }
   .msg.assistant .avatar svg { width: 15px; height: 15px; }
   .meta { font-size: 11px; color: var(--muted); margin-bottom: 4px; display: flex; gap: 8px; align-items: center; }
@@ -150,27 +220,41 @@
   /* ---------- composer ---------- */
   .composer-wrap { padding: 8px 16px 14px; }
   .composer-inner { max-width: 760px; margin: 0 auto; }
-  .composer {
-    display: flex; align-items: center; gap: 6px; background: var(--surface);
-    border-radius: 28px; padding: 8px 8px 8px 18px; border: 1px solid transparent;
+  .composer-row { display: flex; align-items: center; gap: 8px; }
+  .talk-btn {
+    display: flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 999px;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    font-size: 13px; font-weight: 600; white-space: nowrap; flex-shrink: 0;
   }
-  .composer:focus-within { border-color: var(--border-strong); }
-  .composer input { flex: 1; background: transparent; border: none; outline: none; font-size: 15px; min-width: 0; }
-  .composer input::placeholder { color: var(--muted); }
+  .talk-btn:hover { border-color: var(--accent); background: var(--surface); }
+  .talk-btn svg { width: 16px; height: 16px; }
+  .input-pill {
+    flex: 1; min-width: 0; display: flex; align-items: center; background: var(--surface);
+    border-radius: 999px; padding: 2px 18px; border: 1px solid var(--border);
+  }
+  .input-pill:focus-within { border-color: var(--accent); }
+  .input-pill input { flex: 1; background: transparent; border: none; outline: none; font-size: 15px; min-width: 0; padding: 10px 0; }
+  .input-pill input::placeholder { color: var(--muted); }
+  .send-btn {
+    display: flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 999px;
+    background: var(--accent); color: var(--accent-fg); font-size: 13px; font-weight: 700;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .send-btn:hover { background: var(--accent-hover); }
+  .send-btn:disabled { opacity: .4; cursor: default; }
+  .send-btn svg { width: 14px; height: 14px; }
   .icon-btn { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--text); }
   .icon-btn:hover { background: var(--surface-2); }
   .icon-btn:disabled { opacity: .35; cursor: default; }
   .icon-btn svg { width: 18px; height: 18px; }
-  .icon-btn.primary { background: var(--accent); color: var(--accent-fg); }
-  .icon-btn.primary:hover { background: var(--accent-hover); }
   .icon-btn.danger { background: var(--err); color: var(--err-fg); }
 
   .voice-bar {
-    display: flex; align-items: center; gap: 12px; background: var(--surface);
-    border-radius: 28px; padding: 8px 8px 8px 18px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--surface); border-radius: 28px; padding: 8px 8px 8px 18px;
   }
-  .voice-bar .meter { flex: 1; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
-  .voice-bar .meter > div { height: 100%; width: 0%; background: var(--ok); transition: width 60ms linear; }
+  .voice-right { display: flex; align-items: center; gap: 12px; }
+  .voice-bar .meter { flex: 0 1 200px; height: 32px; display: block; border-radius: 8px; }
   .voice-bar .vhint { font-size: 13px; color: var(--muted); white-space: nowrap; }
   .voice-bar .vhint.live { color: var(--ok); }
   .disclaimer { text-align: center; font-size: 11px; color: var(--muted); margin-top: 8px; }
@@ -186,12 +270,8 @@
   .debug pre { margin: 0; padding: 10px 12px; overflow: auto; font-size: 11px; line-height: 1.5; color: var(--debug-text); font-family: ui-monospace, Consolas, monospace; }
 
   /* ---------- theme controls ---------- */
-  .seg { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
-  .seg button { flex: 1; padding: 6px 0; border-radius: 8px; font-size: 12px; color: var(--muted); }
-  .seg button:hover { color: var(--text); }
-  .seg button.active { background: var(--surface-2); color: var(--text); font-weight: 600; }
   .topbar .spacer { flex: 1; }
-  #themeBtn { background: var(--surface); border: 1px solid var(--border); }
+  #themeBtn { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
   #themeBtn:hover { background: var(--surface-2); border-color: var(--border-strong); }
 
   .save-btn {
@@ -211,8 +291,13 @@
     .bubble { max-width: 92%; }
     .empty { padding: 12vh 0 32px; }
     .empty h1 { font-size: 22px; }
-    .composer input { font-size: 16px; }  /* <16px makes iOS zoom the page on focus */
+    .input-pill input { font-size: 16px; }  /* <16px makes iOS zoom the page on focus */
     .composer-wrap { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+    .talk-btn span, .send-btn span { display: none; }
+    .talk-btn, .send-btn { padding: 10px; }
+    .empty { padding: 2vh 0 12px; }
+    .query-card { padding: 8px 10px; }
+    .query-card .qc-sub { display: none; }
     .voice-bar .vhint { white-space: normal; min-width: 0; }
     .debug { left: 8px; right: 8px; width: auto; bottom: 110px; max-height: 40vh; }
   }
@@ -242,16 +327,10 @@
       <label>Voice</label>
       <span class="pill" id="voiceState">Off</span>
     </div>
-    <div class="section">
-      <label>Appearance</label>
-      <div class="seg" id="themeSeg" role="group" aria-label="Theme">
-        <button type="button" data-theme-choice="system">System</button>
-        <button type="button" data-theme-choice="light">Light</button>
-        <button type="button" data-theme-choice="dark">Dark</button>
-      </div>
-    </div>
 
-    <div class="grow"></div>
+    <div class="section recents-head"><label>Recents</label></div>
+    <div class="recents-list" id="recentsList"></div>
+
     <div class="footer">Text → intent router · Voice → realtime model.<br>Both use the same secure tool layer.</div>
   </aside>
 
@@ -271,30 +350,43 @@
     <div class="thread" id="thread">
       <div class="thread-inner">
         <div class="empty" id="empty">
-          <h1>Hey! Ready to check your account?</h1>
-          <div class="chips" id="starterChips"></div>
+          <div class="hero-card">
+            <h1>Hey there!</h1>
+            <p>I can help with your balance, plan, device, purchases, and offers.</p>
+          </div>
+          <div class="quick-label">Quick actions</div>
+          <div class="quick-grid" id="starterChips"></div>
         </div>
         <div id="messages"></div>
+      </div>
+      <div class="voice-overlay" id="voiceOverlay">
+        <div class="toast"><span class="pulse-dot"></span>Please wait — connecting your microphone…</div>
       </div>
     </div>
 
     <div class="composer-wrap">
       <div class="composer-inner">
-        <div class="composer" id="composer">
-          <input id="chatInput" type="text" placeholder="Ask anything about your account" autocomplete="off">
-          <button class="icon-btn" id="voiceBtn" title="Talk instead">
+        <div class="composer-row" id="composer">
+          <button class="talk-btn" id="voiceBtn" title="Talk instead">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+            <span>Talk</span>
           </button>
-          <button class="icon-btn primary" id="sendBtn" title="Send">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          <div class="input-pill">
+            <input id="chatInput" type="text" placeholder="Ask anything about your account" autocomplete="off">
+          </div>
+          <button class="send-btn" id="sendBtn" title="Send">
+            <span>Send</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
           </button>
         </div>
         <div class="voice-bar" id="voiceBar" hidden>
           <span class="vhint" id="voiceHint">Connecting…</span>
-          <div class="meter"><div id="micMeter"></div></div>
-          <button class="icon-btn danger" id="voiceStopBtn" title="End voice">
-            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-          </button>
+          <div class="voice-right">
+            <canvas class="meter" id="micMeter"></canvas>
+            <button class="icon-btn danger" id="voiceStopBtn" title="End voice">
+              <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            </button>
+          </div>
         </div>
         <div class="disclaimer">Answers come from your real telecom account data — nothing is guessed.</div>
       </div>
@@ -335,7 +427,14 @@ const TOOL_LABELS = {
   get_profile: 'profile', get_device_details: 'device details', get_balance: 'balance',
   get_purchase_history: 'purchase history', get_offers: 'offers',
 };
-const STARTERS = ["What's my balance?", 'What offers do I have?', 'Show my device', 'What did I buy recently?'];
+const STARTERS = [
+  { title: 'Balance', sub: 'Check your balance and data left', query: "What's my balance?" },
+  { title: 'Profile', sub: 'View your plan and account details', query: 'Show my profile' },
+  { title: 'Device', sub: 'See your registered device and SIM', query: 'Show my device' },
+  { title: 'Offers', sub: 'Browse offers available to you', query: 'What offers do I have?' },
+  { title: 'Purchase history', sub: 'Review your recent purchases', query: 'What did I buy recently?' },
+  { title: '5G eligibility', sub: 'Check if your plan and device support it', query: 'Am I eligible for 5G?' },
+];
 
 function mobileNumber() { return $('mobileNumber').value.trim(); }
 
@@ -363,6 +462,7 @@ function saveMobileNumber() {
   if (!value) return;
   try { localStorage.setItem('mobileNumber', value); } catch (_) {}
   updateSubscriberBadge(null);   // stale label for the old number, not this one
+  loadRecents();   // recents are scoped per number — a different number has a different list
   const btn = $('saveMobileBtn');
   clearTimeout(btn._resetTimer);
   btn.textContent = 'Saved ✓';
@@ -454,6 +554,7 @@ async function sendChat(text) {
     const body = await res.json();
     typing.remove();
     chatSessionId = body.session_id || chatSessionId;
+    loadRecents();   // fire-and-forget: this turn just persisted, refresh the sidebar list
     logDebug('chat', `${body.type} intent=${body.intent ?? '-'}`);
     const subscriberType = body.data?.data?.subscriberType;
     if (subscriberType) updateSubscriberBadge(subscriberType);
@@ -467,7 +568,8 @@ async function sendChat(text) {
     } else if (body.type === 'error') {
       addMessage('assistant', body.message, { tag: 'couldn’t fetch', tagClass: 'err' });
     } else {
-      addMessage('assistant', body.message, { meta: (body.intent || '').toLowerCase().replace('_', ' ') });
+      const tag = (body.intent || '').toLowerCase().replace('_', ' ');
+      addMessage('assistant', body.message, tag ? { tag, tagClass: 'ans' } : {});
     }
   } catch (err) {
     typing.remove();
@@ -481,8 +583,12 @@ sendBtn.addEventListener('click', () => sendChat());
 chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
 
 STARTERS.forEach((s) => {
-  const b = document.createElement('button'); b.className = 'chip'; b.textContent = s;
-  b.addEventListener('click', () => sendChat(s));
+  const b = document.createElement('button'); b.className = 'query-card';
+  b.innerHTML = `
+    <span class="qc-text"><span class="qc-title">${s.title}</span><span class="qc-sub">${s.sub}</span></span>
+    <svg class="qc-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+  `;
+  b.addEventListener('click', () => sendChat(s.query));
   $('starterChips').appendChild(b);
 });
 
@@ -503,20 +609,56 @@ function setVoiceUI(state, hint) {
   voiceState.className = 'pill ' + (state === 'on' ? 'on' : state === 'connecting' ? 'busy' : state === 'error' ? 'err' : '');
   voiceState.textContent = state === 'off' ? 'Off' : state === 'connecting' ? 'Connecting' : state === 'on' ? 'Live' : 'Error';
   if (hint !== undefined) { voiceHint.textContent = hint; voiceHint.className = 'vhint' + (state === 'on' ? ' live' : ''); }
+  $('voiceOverlay').classList.toggle('show', state === 'connecting');
 }
 
 function startMicMeter(stream) {
   micAudioContext = new (window.AudioContext || window.webkitAudioContext)();
   const source = micAudioContext.createMediaStreamSource(stream);
-  const analyser = micAudioContext.createAnalyser(); analyser.fftSize = 512;
+  const analyser = micAudioContext.createAnalyser(); analyser.fftSize = 1024;
   source.connect(analyser);
   const data = new Uint8Array(analyser.frequencyBinCount);
-  const meterEl = $('micMeter');
+
+  const canvas = $('micMeter');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const BARS = 14;
+  const bars = new Array(BARS).fill(0);   // smoothed 0..1 amplitude per bar
+  const barColor = getComputedStyle(document.documentElement).getPropertyValue('--wave').trim() || '#e3b567';
+
+  const resize = () => {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  };
+  resize();
+  window.addEventListener('resize', resize);
+  canvas._resizeHandler = resize;
+
   (function tick() {
     analyser.getByteTimeDomainData(data);
-    let sum = 0;
-    for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
-    meterEl.style.width = Math.min(100, Math.round(Math.sqrt(sum / data.length) * 400)) + '%';
+    const perBar = Math.floor(data.length / BARS);
+    for (let b = 0; b < BARS; b++) {
+      let sum = 0;
+      const start = b * perBar;
+      for (let i = 0; i < perBar; i++) { const v = (data[start + i] - 128) / 128; sum += v * v; }
+      const level = Math.min(1, Math.sqrt(sum / perBar) * 4.5);
+      bars[b] += (level - bars[b]) * 0.22;   // lerp toward target — slow and calm, not twitchy
+    }
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const gap = w / BARS, barW = gap * 0.6;
+    ctx.fillStyle = barColor;
+    for (let b = 0; b < BARS; b++) {
+      const amp = Math.max(0.12, bars[b]);   // idle floor so it never looks dead
+      const barH = amp * h;
+      const x = b * gap + (gap - barW) / 2, y = (h - barH) / 2;
+      ctx.globalAlpha = 0.55 + amp * 0.45;
+      ctx.beginPath();
+      ctx.roundRect(x, y, barW, barH, barW / 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
     micMeterRafId = requestAnimationFrame(tick);
   })();
 }
@@ -524,8 +666,11 @@ function startMicMeter(stream) {
 function stopMicMeter() {
   if (micMeterRafId) cancelAnimationFrame(micMeterRafId);
   if (micAudioContext) micAudioContext.close();
+  const canvas = $('micMeter');
+  if (canvas._resizeHandler) window.removeEventListener('resize', canvas._resizeHandler);
   micMeterRafId = null; micAudioContext = null;
-  $('micMeter').style.width = '0%';
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 async function startVoice() {
@@ -654,9 +799,22 @@ function detectLanguage(text) {
 }
 
 let voiceLang = 'English';   // default until the caller's speech clearly says otherwise
-let awaitingTranscript = false, responseActive = false, pendingTrigger = false, pendingLang = null, fallbackTimer = null;
+let awaitingTranscript = false, responseActive = false, fallbackTimer = null;
+// FIFO queue of deferred () => void actions, each of which itself calls
+// response.create — every response.create in this file goes through
+// whenResponseFree() so "only one active response at a time" (an Azure
+// Realtime API hard rule) can never be violated by two independent
+// call sites (language-switch turns vs. tool-call continuations) racing
+// each other. Violating it surfaces as a real API error ("Conversation
+// already has an active response in progress") and can leave a turn
+// answered twice or not at all.
+let pendingResponseActions = [];
+function whenResponseFree(action) {
+  if (responseActive) { pendingResponseActions.push(action); return; }
+  action();
+}
 function resetVoiceLangState() {
-  voiceLang = 'English'; awaitingTranscript = false; responseActive = false; pendingTrigger = false; pendingLang = null;
+  voiceLang = 'English'; awaitingTranscript = false; responseActive = false; pendingResponseActions = [];
   if (fallbackTimer) clearTimeout(fallbackTimer);
   fallbackTimer = null;
 }
@@ -690,12 +848,31 @@ function triggerResponse(lang) {
   awaitingTranscript = false;
   if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
   if (!dataChannel || dataChannel.readyState !== 'open') return;
-  if (responseActive) { pendingTrigger = true; pendingLang = lang; return; }   // one response at a time
-  const update = JSON.parse(JSON.stringify(sessionCfg));   // full session, per the replace-not-merge finding
-  update.session.instructions = sessionCfg.session.instructions + '\n\n' + languageDirective(lang);
-  dataChannel.send(JSON.stringify(update));
-  dataChannel.send(JSON.stringify({ type: 'response.create' }));
-  responseActive = true;   // until response.done; stops a double trigger before response.created arrives
+  whenResponseFree(() => {
+    if (!dataChannel) return;
+    const update = JSON.parse(JSON.stringify(sessionCfg));   // full session, per the replace-not-merge finding
+    update.session.instructions = sessionCfg.session.instructions + '\n\n' + languageDirective(lang);
+    dataChannel.send(JSON.stringify(update));
+    dataChannel.send(JSON.stringify({ type: 'response.create' }));
+    responseActive = true;   // until response.done; stops a double trigger before response.created arrives
+  });
+}
+
+// Less sensitive while the assistant is talking (0.9) so its own audio
+// through the speaker, or background noise during playback, doesn't
+// false-trigger as an interruption — but a genuinely louder deliberate
+// interruption still clears 0.9 and cancels it (see speech_started below).
+// More sensitive the instant it's idle (0.8) since nothing is competing
+// acoustically and responsiveness to the caller's first words matters more.
+const VAD_THRESHOLD_SPEAKING = 0.9, VAD_THRESHOLD_IDLE = 0.8;
+function setVadThreshold(threshold) {
+  if (!sessionCfg || !dataChannel || dataChannel.readyState !== 'open') return;
+  if (sessionCfg.session.audio.input.turn_detection.threshold === threshold) return;
+  // Mutate the shared base, not just this one message — triggerResponse()
+  // deep-clones from sessionCfg on every call, so it must always pick up
+  // whatever threshold is currently in effect, not a stale one.
+  sessionCfg.session.audio.input.turn_detection.threshold = threshold;
+  dataChannel.send(JSON.stringify(sessionCfg));
 }
 
 async function onRealtimeEvent(evt) {
@@ -706,6 +883,17 @@ async function onRealtimeEvent(evt) {
       // A prior reply's transcript never arrived (the caller barged in) — its
       // dots would otherwise bounce forever with no answer coming.
       if (pendingVoiceAssistantMsg) { pendingVoiceAssistantMsg.el.remove(); pendingVoiceAssistantMsg = null; }
+      // Interruption: the assistant is still mid-response when new speech is
+      // detected — stop it now rather than let it talk over the caller.
+      // Anything queued behind that response (e.g. a tool-call continuation)
+      // was for a response that's being killed, so it must be dropped too;
+      // otherwise it would fire once the cancel's own response.done arrives
+      // and try to continue a response that no longer exists.
+      if (responseActive && dataChannel && dataChannel.readyState === 'open') {
+        logDebug('voice', 'caller interrupted — cancelling in-progress response');
+        pendingResponseActions = [];
+        dataChannel.send(JSON.stringify({ type: 'response.cancel' }));
+      }
       return;
     case 'input_audio_buffer.speech_stopped':
       voiceHint.textContent = 'Thinking…';
@@ -732,6 +920,7 @@ async function onRealtimeEvent(evt) {
     }
     case 'output_audio_buffer.started':
       voiceHint.textContent = 'Speaking…';
+      setVadThreshold(VAD_THRESHOLD_SPEAKING);
       // Audio starts playing well before the transcript is ready (Azure
       // doesn't stream transcript deltas) — show dots immediately rather
       // than leaving the reply with no visible bubble at all until then.
@@ -743,6 +932,7 @@ async function onRealtimeEvent(evt) {
       return;
     case 'output_audio_buffer.stopped':
       voiceHint.textContent = 'Listening — just talk';
+      setVadThreshold(VAD_THRESHOLD_IDLE);
       return;
     case 'response.output_audio_transcript.done':
     case 'response.audio_transcript.done':
@@ -761,7 +951,10 @@ async function onRealtimeEvent(evt) {
       return;
     case 'response.done':
       responseActive = false;
-      if (pendingTrigger) { pendingTrigger = false; triggerResponse(pendingLang); }
+      if (pendingResponseActions.length) {
+        const next = pendingResponseActions.shift();
+        next();
+      }
       return;
     case 'error':
       addMessage('assistant', evt.error?.message || JSON.stringify(evt), { tag: 'voice error', tagClass: 'err' });
@@ -788,7 +981,17 @@ async function handleFunctionCall(evt) {
     type: 'conversation.item.create',
     item: { type: 'function_call_output', call_id: evt.call_id, output: JSON.stringify(output) },
   }));
-  dataChannel.send(JSON.stringify({ type: 'response.create' }));
+  // Same guard as triggerResponse() — the response carrying this function
+  // call may not have reached response.done on the client yet (that event
+  // and this one can race), so this response.create must queue too, not
+  // fire blind. Unguarded, this collided with a still-active response and
+  // Azure rejected it outright ("Conversation already has an active
+  // response in progress"), sometimes leaving the turn answered twice.
+  whenResponseFree(() => {
+    if (!dataChannel) return;
+    dataChannel.send(JSON.stringify({ type: 'response.create' }));
+    responseActive = true;
+  });
 }
 
 // ============================================================
@@ -799,9 +1002,69 @@ $('newChat').addEventListener('click', () => {
   chatSessionId = null;
   messages.innerHTML = '';
   empty.hidden = false;
+  renderRecents();   // no data change, just clears the "active" highlight
   closeSidebar();
   chatInput.focus();
 });
+
+// ---- Recents (past conversations, per mobile number, via Cosmos DB) ----
+let recentsItems = [];
+
+async function loadRecents() {
+  try {
+    const res = await fetch(`/api/conversations?mobile_number=${encodeURIComponent(mobileNumber())}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    recentsItems = await res.json();
+    renderRecents();
+  } catch (err) {
+    logDebug('recents', 'list failed: ' + err.message);
+  }
+}
+
+function renderRecents() {
+  const list = $('recentsList');
+  list.innerHTML = '';
+  if (!recentsItems.length) {
+    const empty = document.createElement('div');
+    empty.className = 'recents-empty';
+    empty.textContent = 'No past conversations yet';
+    list.appendChild(empty);
+    return;
+  }
+  recentsItems.forEach((item) => {
+    const b = document.createElement('button');
+    b.className = 'recent-item' + (item.id === chatSessionId ? ' active' : '');
+    b.type = 'button';
+    b.textContent = item.title;
+    b.title = item.title;
+    b.addEventListener('click', () => loadConversation(item.id));
+    list.appendChild(b);
+  });
+}
+
+async function loadConversation(id) {
+  if (peerConnection) stopVoice();
+  try {
+    const res = await fetch(`/api/conversations/${encodeURIComponent(id)}?mobile_number=${encodeURIComponent(mobileNumber())}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+    chatSessionId = body.id;
+    messages.innerHTML = '';
+    empty.hidden = true;
+    (body.messages || []).forEach((m) => {
+      if (m.role === 'user' || m.role === 'assistant') addMessage(m.role, m.content);
+    });
+    scrollToBottom();
+    renderRecents();   // updates which item shows as "active"
+    closeSidebar();
+    chatInput.focus();
+  } catch (err) {
+    logDebug('recents', 'load failed: ' + err.message);
+    addMessage('system', "Couldn't load that conversation.");
+  }
+}
+
+loadRecents();
 
 $('debugToggle').addEventListener('click', () => {
   debugEl.hidden = !debugEl.hidden;
@@ -825,16 +1088,13 @@ function applyTheme() {
   const choice = themeChoice();
   const dark = choice === 'dark' || (choice === 'system' && themeQuery.matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  $('themeColor').setAttribute('content', dark ? '#212121' : '#f7f7f8');
+  $('themeColor').setAttribute('content', dark ? '#17140d' : '#f4f2ec');
   // toggleAttribute, not `.hidden =`: the `hidden` property only exists on
   // HTML elements — on an <svg> it's a no-op expando, so both icons showed.
   $('themeIconSun').toggleAttribute('hidden', !dark);   // in dark mode the button offers "go light"
   $('themeIconMoon').toggleAttribute('hidden', dark);
   $('themeBtn').title = dark ? 'Switch to light mode' : 'Switch to dark mode';
   $('themeBtn').setAttribute('aria-label', $('themeBtn').title);
-  document.querySelectorAll('#themeSeg button').forEach((b) => {
-    b.classList.toggle('active', b.dataset.themeChoice === choice);
-  });
 }
 function setTheme(choice) {
   try {
@@ -843,9 +1103,6 @@ function setTheme(choice) {
   } catch (_) {}
   applyTheme();
 }
-document.querySelectorAll('#themeSeg button').forEach((b) => {
-  b.addEventListener('click', () => setTheme(b.dataset.themeChoice));
-});
 $('themeBtn').addEventListener('click', () => {
   setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 });
