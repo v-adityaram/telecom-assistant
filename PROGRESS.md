@@ -6,6 +6,29 @@ so a session on any machine can pick up where the last one left off.
 
 ## Where things stand (2026-09-04, updated)
 
+**Update 30 — TURN deployed + NSG rule added, STILL failing identically. Root cause not yet
+isolated — diagnosis in progress, do not assume Update 29 is finished.** After deploying coturn
+(Update 29) and adding the inbound NSG rule for TCP 5349 (`RapidBuildFactory-nsg`, priority 350,
+confirmed present in the portal), a real retest on the TCS laptop still shows the exact same
+failure signature as before TURN existed: `TURN relay configured` logs correctly (frontend picked
+up credentials fine), then `ice checking` → ~21s → `ice disconnected` / `connection failed`. TURN
+having zero effect despite being configured and the port being open in the NSG means the problem
+is one of:
+1. **coturn isn't actually reachable/answering on 5349** — could be not running, a config error,
+   or (less likely, no evidence of this having been set up) an OS-level firewall (ufw) on the VM
+   itself blocking it in addition to the NSG. Not yet checked directly on the VM.
+2. **Zscaler blocks port 5349 specifically too, not just UDP** — i.e. the "block everything except
+   80/443" policy some corporate proxies run, which was flagged from the start as the scenario that
+   would require the bigger SNI-multiplexed port-443 approach instead of plain TURN-over-5349.
+Diagnostic in progress: testing raw TCP reachability to `104.211.224.38:5349` from this session's
+*own* machine, which is on the same TCS/Zscaler-managed network — if unreachable from here too,
+that's real evidence for (2) over (1), since it'd mean the block is network-side, not VM-side. If
+reachable from here, that points at (1) instead (check `systemctl status coturn`,
+`ss -tlnp | grep 5349`, and `journalctl -u coturn -f` while attempting a call, on the VM directly,
+none of which have been run yet this session). **Do not attempt the 443-multiplexing rebuild until
+(1) is ruled out** — it would be wasted, riskier effort if the real issue turns out to be something
+simple like coturn not running.
+
 **Update 29 — Self-hosted TURN relay (coturn), to fix voice on TCS/Zscaler-managed laptops.**
 Root-caused via a HAR capture + direct testing: voice fails specifically on TCS-managed laptops
 (21s stuck at `ice checking` then `ice disconnected`/`connection failed`) but works fine on
