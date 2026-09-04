@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api import chat as chat_module
@@ -11,8 +12,18 @@ client = TestClient(app)
 MOBILE_NUMBER = "+919999900003"
 
 
+@pytest.fixture(autouse=True)
+def _no_real_conversation_store(monkeypatch):
+    # Cosmos is configured in this repo's local .env for live use — without
+    # this, every test here would make real reads/writes against it. Unit
+    # tests stay fully offline; conversation-history behavior itself is
+    # covered separately, in test_conversation_history below.
+    monkeypatch.setattr(chat_module, "_load_history", lambda *a, **k: [])
+    monkeypatch.setattr(chat_module, "_persist_turn", lambda *a, **k: None)
+
+
 def _patch_route_intent(monkeypatch, result: RouterResult):
-    async def fake_route_intent(message, candidate_intents=None):
+    async def fake_route_intent(message, candidate_intents=None, history=None):
         fake_route_intent.captured = (message, candidate_intents)
         return result
 
@@ -196,8 +207,8 @@ def test_complex_intent_routes_to_langgraph_fallback(monkeypatch):
         RouterResult(intent="COMPLEX", confidence=0.9, needs_clarification=False),
     )
 
-    async def fake_run_complex_flow(message, mobile_number):
-        fake_run_complex_flow.captured = (message, mobile_number)
+    async def fake_run_complex_flow(message, mobile_number, history=None):
+        fake_run_complex_flow.captured = (message, mobile_number, history)
         return "You're eligible for 5G on both your plan and device.", {"PROFILE": {}, "DEVICE_DETAILS": {}}
 
     monkeypatch.setattr(chat_module, "run_complex_flow", fake_run_complex_flow)
@@ -212,7 +223,31 @@ def test_complex_intent_routes_to_langgraph_fallback(monkeypatch):
     assert body["intent"] == "COMPLEX"
     assert body["message"] == "You're eligible for 5G on both your plan and device."
     assert body["data"] == {"PROFILE": {}, "DEVICE_DETAILS": {}}
-    assert fake_run_complex_flow.captured == ("am I eligible for 5G", MOBILE_NUMBER)
+    assert fake_run_complex_flow.captured == ("am I eligible for 5G", MOBILE_NUMBER, [])
+
+
+def test_buy_offer_intent_routes_to_purchase_flow(monkeypatch):
+    _patch_route_intent(
+        monkeypatch,
+        RouterResult(intent="BUY_OFFER", confidence=0.9, needs_clarification=False),
+    )
+
+    async def fake_run_buy_offer_flow(message, mobile_number, history=None):
+        fake_run_buy_offer_flow.captured = (message, mobile_number, history)
+        return "I've captured your selection: 6 GB Data Booster (₹70). This is not a real purchase."
+
+    monkeypatch.setattr(chat_module, "run_buy_offer_flow", fake_run_buy_offer_flow)
+
+    response = client.post(
+        "/api/chat", json={"message": "buy the 2nd one", "mobile_number": MOBILE_NUMBER}
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["type"] == "answer"
+    assert body["intent"] == "BUY_OFFER"
+    assert "6 GB Data Booster" in body["message"]
+    assert fake_run_buy_offer_flow.captured == ("buy the 2nd one", MOBILE_NUMBER, [])
 
 
 def test_specific_scope_uses_synthesized_answer_not_template(monkeypatch):
@@ -259,3 +294,42 @@ def test_full_scope_still_uses_template(monkeypatch):
     body = response.json()
     assert response.status_code == 200
     assert "Main balance: ₹50" in body["message"]
+
+
+def test_complex_flow_receives_prior_conversation_history(monkeypatch):
+    # F-003: a COMPLEX turn (which is where meta-questions like "what did I
+    # ask" land, per the router calibration) must see this conversation's
+    # real prior turns, not just the current message in isolation.
+    prior_history = [
+        {"role": "user", "content": "what's my balance"},
+        {"role": "assistant", "content": "Main balance: ₹102.5"},
+    ]
+    monkeypatch.setattr(chat_module, "_load_history", lambda session_id, mobile_number: prior_history)
+    persisted = {}
+    monkeypatch.setattr(
+        chat_module,
+        "_persist_turn",
+        lambda session_id, mobile_number, history, user_message, assistant_message: persisted.update(
+            session_id=session_id, history=history, user_message=user_message, assistant_message=assistant_message
+        ),
+    )
+    _patch_route_intent(
+        monkeypatch,
+        RouterResult(intent="COMPLEX", confidence=0.9, needs_clarification=False),
+    )
+
+    async def fake_run_complex_flow(message, mobile_number, history=None):
+        fake_run_complex_flow.captured_history = history
+        return "You asked about your balance a moment ago.", {}
+
+    monkeypatch.setattr(chat_module, "run_complex_flow", fake_run_complex_flow)
+
+    response = client.post(
+        "/api/chat", json={"message": "what all did I ask", "mobile_number": MOBILE_NUMBER}
+    )
+
+    assert response.status_code == 200
+    assert fake_run_complex_flow.captured_history == prior_history
+    assert persisted["history"] == prior_history
+    assert persisted["user_message"] == "what all did I ask"
+    assert persisted["assistant_message"] == "You asked about your balance a moment ago."

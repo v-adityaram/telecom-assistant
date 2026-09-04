@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     telecom_api_base_url: str = ""
     telecom_api_key: str = ""
 
+    # Conversation persistence (F-004). Partition key /mobileNumber, one
+    # document per conversation. Empty connection string disables history —
+    # chat/voice work exactly as before, no error.
+    cosmos_connection_string: str = ""
+    cosmos_database: str = "telecom-poc-db"
+    cosmos_container: str = "conversations"
+
     intent_confidence_threshold: float = 0.80
     # Lower bar for the follow-up turn after a clarification: the model is
     # choosing between 2-3 named candidates, not classifying from scratch.

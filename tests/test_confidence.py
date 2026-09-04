@@ -143,3 +143,21 @@ def test_invalid_scope_value_defaults_to_full():
     result = build_router_result(raw, THRESHOLD)
 
     assert result.scope == "full"
+
+
+def test_buy_offer_intent_bypasses_threshold_and_clarification():
+    raw = {"intent": "BUY_OFFER", "confidence": 0.4}  # even a low stated confidence
+
+    result = build_router_result(raw, THRESHOLD)
+
+    assert result.intent == "BUY_OFFER"
+    assert result.needs_clarification is False
+    assert result.possible_intents == []
+
+
+def test_buy_offer_intent_never_offered_as_a_clarification_chip():
+    raw = {"intent": "PROFILE", "confidence": 0.3, "possible_intents": ["BUY_OFFER", "OFFERS"]}
+
+    result = build_router_result(raw, THRESHOLD)
+
+    assert "BUY_OFFER" not in result.possible_intents

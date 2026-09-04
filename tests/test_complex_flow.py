@@ -26,11 +26,14 @@ class FakeClient:
     """Returns canned responses in call order; one FakeClient per _client() call
     (matching the real `async with _client() as client:` pattern), sharing a
     queue across instances so plan/fetch/answer see it as one sequence.
+    `calls`, if given, is also shared across instances and records each
+    create() call's kwargs — lets a test inspect the real messages sent.
     """
 
-    def __init__(self, queue, exc=None):
+    def __init__(self, queue, exc=None, calls=None):
         self._queue = queue
         self._exc = exc
+        self.calls = calls if calls is not None else []
 
     async def __aenter__(self):
         return self
@@ -43,6 +46,7 @@ class FakeClient:
             self._outer = outer
 
         async def create(self, **kwargs):
+            self._outer.calls.append(kwargs)
             if self._outer._exc:
                 raise self._outer._exc
             return FakeCompletion(self._outer._queue.pop(0))
@@ -53,9 +57,9 @@ class FakeClient:
         return type("Chat", (), {"completions": completions})()
 
 
-def make_client_factory(queue=None, exc=None):
+def make_client_factory(queue=None, exc=None, calls=None):
     def factory():
-        return FakeClient(queue if queue is not None else [], exc=exc)
+        return FakeClient(queue if queue is not None else [], exc=exc, calls=calls)
 
     return factory
 
@@ -179,3 +183,27 @@ async def test_empty_plan_skips_fetch_entirely(monkeypatch):
 
     assert fetched == {}
     assert answer == "That's a general question I can answer directly."
+
+
+@pytest.mark.asyncio
+async def test_answer_node_sends_real_prior_turns_to_the_model(monkeypatch):
+    # F-003: the answer node must pass conversation history as real messages
+    # (not just the current message) — this is what lets it answer
+    # meta-questions like "what did I ask" instead of only ever seeing one
+    # isolated message.
+    queue = [json.dumps({"tools": []}), "You asked about your balance earlier."]
+    calls = []
+    monkeypatch.setattr(complex_flow, "_client", make_client_factory(queue, calls=calls))
+
+    history = [
+        {"role": "user", "content": "what's my balance"},
+        {"role": "assistant", "content": "Main balance: ₹102.5"},
+    ]
+    answer, _ = await complex_flow.run_complex_flow("what all did I ask", "+919999900003", history)
+
+    assert answer == "You asked about your balance earlier."
+    answer_call = calls[1]  # calls[0] is the plan node's create()
+    messages = answer_call["messages"]
+    assert messages[0]["role"] == "system"
+    assert messages[1:3] == history
+    assert messages[3] == {"role": "user", "content": "what all did I ask"}

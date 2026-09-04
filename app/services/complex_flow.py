@@ -57,13 +57,18 @@ Calibration — always include every listed tool for these topics, not just one:
 Respond with ONLY a JSON object of this exact shape, no other text:
 {"tools": ["PROFILE", "OFFERS"]}"""
 
-ANSWER_PROMPT = """You are a telecom customer assistant answering a specific
-question using real account data that was just looked up for this customer.
+ANSWER_PROMPT = """You are a telecom customer assistant answering the customer's
+latest message using real account data that was just looked up for this turn,
+plus the recent conversation so far (given to you as prior turns, oldest first).
 
 SCOPE — you only help with the caller's telecom account and service: their
-profile/plan, device/SIM, balance, purchase history, and offers. If the
-question is unrelated to that (general knowledge, trivia, jokes, coding help,
-current events, or anything else outside their account) — including when the
+profile/plan, device/SIM, balance, purchase history, offers, AND this
+conversation itself. Questions about the conversation — "what did I ask",
+"what have we talked about", "go back to my balance question", "summarize
+this chat" — are in scope: answer those from the conversation history below,
+no fresh account-data lookup is needed for them. If the message is unrelated
+to both the account and the conversation so far (general knowledge, trivia,
+jokes, coding help, current events, or anything else) — including when the
 account data below is empty because it needed no lookup — do NOT answer it,
 even if you know the answer. Instead decline warmly with something like:
 "I can only help with your telecom account and services — your plan, balance,
@@ -71,17 +76,16 @@ device, purchase history, or offers. I'm not able to help with that, but I'm
 happy to check any of those for you!" You may still use general knowledge to
 help INTERPRET an account-related question (e.g. knowing a city is in India
 to answer a roaming question) — just never to answer something that has
-nothing to do with the account.
+nothing to do with the account or this conversation.
 
-Otherwise, answer the user's actual question directly and concisely, grounded
-only in the data below — never invent numbers, plans, or account details that
-aren't in it. If the data doesn't contain what's needed, say so honestly
+Otherwise, answer directly and concisely, grounded only in the data and
+conversation below — never invent numbers, plans, or account details that
+aren't in them. If the data doesn't contain what's needed, say so honestly
 instead of guessing.
 
-Account data (JSON; a lookup marked "error" failed and has no data):
+Account data just looked up for this turn (JSON; a lookup marked "error"
+failed and has no data):
 {data_json}
-
-User's question: {message}
 
 Reply in plain conversational text — no JSON, no markdown headers, a few
 sentences at most."""
@@ -98,6 +102,7 @@ class ComplexState(TypedDict):
     plan: list[str]
     fetched: dict
     answer: str
+    history: list[dict]
 
 
 def _client() -> AsyncOpenAI:
@@ -149,16 +154,19 @@ async def _fetch_node(state: ComplexState) -> dict:
 
 async def _answer_node(state: ComplexState) -> dict:
     settings = get_settings()
-    prompt = ANSWER_PROMPT.format(
-        data_json=json.dumps(state["fetched"]),
-        message=state["message"],
-    )
+    prompt = ANSWER_PROMPT.format(data_json=json.dumps(state["fetched"]))
+    # Real prior turns, not folded into the system prompt — lets the model
+    # answer meta-questions ("what did I ask") from actual conversation
+    # history instead of only ever seeing the current message in isolation.
+    messages = [{"role": "system", "content": prompt}]
+    messages.extend(state.get("history") or [])
+    messages.append({"role": "user", "content": state["message"]})
     try:
         async with _client() as client:
             response = await asyncio.wait_for(
                 client.chat.completions.create(
                     model=settings.azure_openai_deployment,
-                    messages=[{"role": "system", "content": prompt}],
+                    messages=messages,
                     reasoning_effort="minimal",
                     max_completion_tokens=300,
                 ),
@@ -182,11 +190,23 @@ _graph.add_edge("answer", END)
 _compiled = _graph.compile()
 
 
-async def run_complex_flow(message: str, mobile_number: str) -> tuple[str, dict]:
+async def run_complex_flow(
+    message: str, mobile_number: str, history: list[dict] | None = None
+) -> tuple[str, dict]:
     """Returns (answer_message, fetched_data) — fetched_data is included in the
     chat response's `data` field the same way a single-tool answer includes it.
+    `history` is this conversation's prior turns (oldest first, already
+    role/content dicts) — capped here so a long-running chat can't blow up
+    token cost/latency on every COMPLEX turn.
     """
     result = await _compiled.ainvoke(
-        {"message": message, "mobile_number": mobile_number, "plan": [], "fetched": {}, "answer": ""}
+        {
+            "message": message,
+            "mobile_number": mobile_number,
+            "plan": [],
+            "fetched": {},
+            "answer": "",
+            "history": (history or [])[-20:],
+        }
     )
     return result["answer"], result["fetched"]

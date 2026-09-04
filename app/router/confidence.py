@@ -7,6 +7,10 @@ ALLOWED_INTENTS = set(TOOL_REGISTRY.keys())
 # (app/services/complex_flow.py) instead of execute_tool.
 COMPLEX_INTENT = "COMPLEX"
 
+# Also not a tool-registry entry (it's a demo flow, not a real telecom-API
+# lookup) — chat.py routes this to app/services/purchase_flow.py.
+BUY_OFFER_INTENT = "BUY_OFFER"
+
 # Only used when the model doesn't supply its own clarification_question.
 DEFAULT_CLARIFICATION_MESSAGE = (
     "Happy to help — I can check your plan or profile, device details, balance, "
@@ -24,11 +28,11 @@ def build_router_result(raw: dict, threshold: float) -> RouterResult:
     intent = raw.get("intent")
     confidence = _as_confidence(raw.get("confidence"))
 
-    if intent == COMPLEX_INTENT:
+    if intent in (COMPLEX_INTENT, BUY_OFFER_INTENT):
         # A routing decision, not a single tool call — never gated behind the
         # threshold, and never offered as a clarification chip.
         return RouterResult(
-            intent=COMPLEX_INTENT,
+            intent=intent,
             confidence=confidence,
             needs_clarification=False,
             possible_intents=[],

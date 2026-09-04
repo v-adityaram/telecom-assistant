@@ -26,10 +26,19 @@ Classify the user's message into exactly one of these intents:
 - BALANCE: account balance, data/voice/SMS remaining
 - PURCHASE_HISTORY: past purchases/recharges/transactions
 - OFFERS: available offers/plans/deals to buy
+- BUY_OFFER: the user wants to actually purchase/buy a specific offer they
+  named or referenced — see the BUY_OFFER section below
 - COMPLEX: needs real data from more than one of the areas above to answer
   well, or asks for reasoning/advice using account data, or bundles multiple
   explicit requests in one message — see the COMPLEX section below
 - UNKNOWN: anything else, or the message is too vague to classify
+
+CONVERSATION HISTORY — you may be given this conversation's prior turns
+before the user's latest message. Use them to resolve references the latest
+message alone can't be classified from: "the 2nd one", "that data booster",
+"buy it", "yes the weekend one" only make sense in light of an offers list
+(or similar) shown earlier in the same conversation. Never require the
+latest message to be self-contained if history already disambiguates it.
 
 Be tolerant of typos and casual phrasing (e.g. "balence" means BALANCE).
 
@@ -88,11 +97,61 @@ because the answer genuinely needs more than a single lookup. Examples:
   advice grounded in account data, not a raw lookup)
 - "check my balance and tell me what offers I have" -> COMPLEX (two explicit
   requests in one message)
+- "what all did I ask" / "what have we talked about" / "what did I ask you
+  before" / "go back to my balance question" / "can you summarize this chat"
+  -> COMPLEX (a question about THIS conversation itself, not a new account
+  lookup — the COMPLEX flow has access to the real conversation history and
+  answers these directly; never treat this as too vague to classify or as
+  generic small talk)
+- ANY short follow-up that only makes sense in light of something just
+  discussed earlier in this conversation -> COMPLEX, always, even though the
+  message alone looks vague or ambiguous with no history. Judge this by
+  MEANING, not exact wording — any informal/slang phrasing of "why", "is it
+  good/worth it", or "tell me more" counts the same as the examples below,
+  including ones that don't share their words at all: "why is my data low"
+  right after balance data was already shown (real usage numbers are already
+  in the conversation — this needs reasoning over them, not a fresh lookup
+  or a "which do you mean" question) reads the same as "that seems like
+  barely anything, how come" or "how'd it drop so much"; "how good is that
+  offer" / "is that worth it" / "is it a good deal" right after a specific
+  offer was named or bought reads the same as "worth getting?" or "should I
+  bother"; "details" / "tell me more" / "why" / "explain that" referring to
+  something just named reads the same as "gimme more info on it", "fill me
+  in", or "what's the deal with that". The COMPLEX answer node has the real
+  conversation history and can ground a real answer in it — a message that
+  would be unclassifiable in isolation can still be a clear COMPLEX case
+  once you account for what was just said, no matter how casually it's
+  phrased. Do NOT fall back to a generic clarification question just
+  because the current message by itself doesn't name an account area —
+  check the recent history first, and judge intent, not vocabulary.
 Set confidence 0.9 for a clear COMPLEX case; possible_intents and
 clarification_question are not used when intent is COMPLEX (leave them empty).
 Do NOT use COMPLEX for "check my plan" / "what's my plan" / bare "plan" —
 that stays the normal PROFILE-vs-OFFERS clarification below; a quick pick
 resolves it, no deeper lookup needed.
+
+BUY_OFFER — the user wants to purchase a specific offer, not just browse
+them. Examples:
+- "I wanna buy the 2nd one" / "buy that one" / "get me the weekend pack" /
+  "I'll take the data booster" -> BUY_OFFER at confidence >= 0.9, but ONLY
+  if a specific offer is identifiable (by name, or by an ordinal/reference
+  that conversation history resolves — e.g. an offers list was shown earlier
+  and "the 2nd one" clearly points at one of them)
+- "I want to buy data" / "I wanna buy data" / "I want data" / "what can I
+  buy" / any variant asking to purchase something in general, with no
+  specific offer named or resolvable from history -> ALWAYS OFFERS at
+  confidence >= 0.9, never a clarification. We have no way to filter by
+  "daily/weekly/monthly" or GB amount, so do NOT ask what kind of pack, what
+  duration, or what data amount they want — that question can't be answered
+  usefully and just stalls the user. Showing the real offers list IS the
+  answer; let them pick from what's actually available. This also applies to
+  a short follow-up reply like "daily" / "weekly" / "a small one" after any
+  offer-purchase-flavored message — still OFFERS, not another clarifying
+  question, for the same reason.
+- If a specific offer WAS just resolved from history but you're not fully
+  sure OFFERS vs BUY_OFFER, prefer BUY_OFFER — the flow itself asks for
+  clarification if it still can't identify a single offer.
+Set confidence 0.9 for a clear BUY_OFFER case.
 
 If the message could plausibly mean exactly one of two single-lookup intents
 (e.g. "check my plan" could mean PROFILE or OFFERS, and a quick pick from the
@@ -139,7 +198,7 @@ explicitly asking about the one latest transaction) -> specific.
 {candidate_note}
 Respond with ONLY a JSON object of this exact shape, no other text:
 {{
-  "intent": "<one of PROFILE, DEVICE_DETAILS, BALANCE, PURCHASE_HISTORY, OFFERS, COMPLEX, UNKNOWN>",
+  "intent": "<one of PROFILE, DEVICE_DETAILS, BALANCE, PURCHASE_HISTORY, OFFERS, BUY_OFFER, COMPLEX, UNKNOWN>",
   "confidence": <float between 0.0 and 1.0>,
   "possible_intents": [<intent strings, only when genuinely ambiguous between known intents, else []>],
   "clarification_question": "<a short question or friendly redirect whenever confidence is below 0.5>",
@@ -167,11 +226,15 @@ def _client() -> AsyncOpenAI:
     )
 
 
-async def classify_intent(message: str, candidate_intents: list[str] | None = None) -> dict:
+async def classify_intent(
+    message: str, candidate_intents: list[str] | None = None, history: list[dict] | None = None
+) -> dict:
     """Classifies a message via Azure OpenAI. Never raises: any failure
     (timeout, API error, malformed response) yields FALLBACK_RESULT so the
     caller treats it as low-confidence and asks for clarification instead of
-    calling a telecom API on a guess.
+    calling a telecom API on a guess. `history` is this conversation's prior
+    turns (oldest first) — lets a reference like "the 2nd one" resolve
+    against whatever was shown earlier, capped here to bound token cost.
     """
     settings = get_settings()
     candidate_note = (
@@ -180,16 +243,16 @@ async def classify_intent(message: str, candidate_intents: list[str] | None = No
         else ""
     )
     system_prompt = SYSTEM_PROMPT.format(candidate_note=candidate_note)
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend((history or [])[-20:])
+    messages.append({"role": "user", "content": message})
 
     try:
         async with _client() as client:
             response = await asyncio.wait_for(
                 client.chat.completions.create(
                     model=settings.azure_openai_deployment,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": message},
-                    ],
+                    messages=messages,
                     # gpt-5 models reject temperature != default; minimal
                     # reasoning effort keeps this fast for a plain classification.
                     reasoning_effort="minimal",

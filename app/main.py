@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.api import chat, health, voice
+from app.api import chat, conversations, health, voice
 from app.config import get_settings
 from app.logging_config import configure_logging
 
@@ -30,6 +30,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(voice.router)
+app.include_router(conversations.router)
 
 
 @app.get("/", include_in_schema=False)
