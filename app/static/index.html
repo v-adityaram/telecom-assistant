@@ -457,11 +457,20 @@ function loadSavedMobileNumber() {
     if (saved) $('mobileNumber').value = saved;
   } catch (_) {}
 }
+let lastMobileNumber;   // set for real once loadSavedMobileNumber() has restored the input, below
 function saveMobileNumber() {
   const value = mobileNumber();
   if (!value) return;
   try { localStorage.setItem('mobileNumber', value); } catch (_) {}
   updateSubscriberBadge(null);   // stale label for the old number, not this one
+  if (value !== lastMobileNumber) {
+    // A different number has no business continuing the previous number's
+    // thread — it can't even load that conversation back (Cosmos is
+    // partitioned by mobileNumber), so the visible thread was quietly
+    // stale/misleading until a message was actually sent. Start clean.
+    startFreshConversation();
+  }
+  lastMobileNumber = value;
   loadRecents();   // recents are scoped per number — a different number has a different list
   const btn = $('saveMobileBtn');
   clearTimeout(btn._resetTimer);
@@ -472,6 +481,7 @@ function saveMobileNumber() {
 $('saveMobileBtn').addEventListener('click', saveMobileNumber);
 $('mobileNumber').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveMobileNumber(); });
 loadSavedMobileNumber();
+lastMobileNumber = mobileNumber();
 
 function logDebug(kind, detail) {
   const t = new Date().toLocaleTimeString([], { hour12: false });
@@ -599,7 +609,25 @@ let peerConnection = null, dataChannel = null, micStream = null;
 let micAudioContext = null, micMeterRafId = null;
 let pendingVoiceUserBubble = null;
 let pendingVoiceAssistantMsg = null;   // { el, body } — dots shown while audio plays, ahead of the transcript
+let pendingVoiceUserText = null;       // caller's transcript text, held until the matching spoken reply lands, for persistence
 let sessionCfg = null;
+
+// Voice never touches /api/chat (audio goes browser <-> Azure directly), so
+// nothing persists it the way text chat does — this is the explicit call
+// that closes that gap, one full exchange (caller text + spoken reply) at
+// a time. Silently best-effort: a failed save shouldn't interrupt the call.
+async function persistVoiceTurn(userText, assistantText) {
+  if (!userText || !assistantText) return;
+  try {
+    await fetch(`/api/conversations/${encodeURIComponent(chatSessionId)}/turns`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobile_number: mobileNumber(), user_message: userText, assistant_message: assistantText }),
+    });
+    loadRecents();
+  } catch (err) {
+    logDebug('voice', 'turn persist failed: ' + err.message);
+  }
+}
 
 function setVoiceUI(state, hint) {
   // state: 'off' | 'connecting' | 'on' | 'error'
@@ -675,6 +703,10 @@ function stopMicMeter() {
 
 async function startVoice() {
   if (peerConnection) return;
+  // Voice turns persist under the same conversation id text chat uses —
+  // needs one to exist even if this call opens a brand-new conversation
+  // that's never sent a text message yet.
+  chatSessionId = chatSessionId || crypto.randomUUID();
   setVoiceUI('connecting', 'Starting session…');
   try {
     const sessionRes = await fetch('/api/voice/session', { method: 'POST' });
@@ -785,17 +817,24 @@ const SCRIPT_RANGES = [
 // language — English needs 2+ words (or 8+ letters), Indic scripts need 5+
 // characters (combining marks inflate the count, so that's still ~1-2 words).
 function detectLanguage(text) {
-  let best = null, bestCount = 0;
+  // Indic scripts are checked before English, not by raw character count —
+  // real Indian speech routinely code-switches ("connection currently
+  // active hai kya"), borrowing English nouns mid-sentence while the
+  // language actually being spoken is still Hindi/Telugu/etc. Picking
+  // whichever script has more matched characters (the old approach)
+  // regularly lost to those borrowed English words outnumbering the
+  // Indic grammatical scaffolding, wrongly flipping the whole reply to
+  // English. Indic scripts don't share Unicode ranges with each other, so
+  // checking them ahead of English in any order is safe — a transcript
+  // can't clear two different Indic scripts' thresholds at once. English
+  // only wins when no Indic script clears its own threshold at all.
   for (const [lang, re] of SCRIPT_RANGES) {
-    const n = (text.match(re) || []).length;
-    if (n > bestCount) { best = lang; bestCount = n; }
+    if (lang === 'English') continue;
+    if ((text.match(re) || []).length >= 5) return lang;
   }
-  if (!best) return null;
-  if (best === 'English') {
-    const words = text.trim().split(/\s+/).filter(Boolean).length;
-    return (words >= 2 || bestCount >= 8) ? best : null;
-  }
-  return bestCount >= 5 ? best : null;
+  const englishCount = (text.match(/[A-Za-z]/g) || []).length;
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return (words >= 2 || englishCount >= 8) ? 'English' : null;
 }
 
 let voiceLang = 'English';   // default until the caller's speech clearly says otherwise
@@ -815,6 +854,7 @@ function whenResponseFree(action) {
 }
 function resetVoiceLangState() {
   voiceLang = 'English'; awaitingTranscript = false; responseActive = false; pendingResponseActions = [];
+  pendingVoiceUserText = null;
   if (fallbackTimer) clearTimeout(fallbackTimer);
   fallbackTimer = null;
 }
@@ -908,6 +948,7 @@ async function onRealtimeEvent(evt) {
       if (evt.transcript) {
         if (pendingVoiceUserBubble) { pendingVoiceUserBubble.textContent = evt.transcript; pendingVoiceUserBubble = null; }
         else addMessage('user', evt.transcript);
+        pendingVoiceUserText = evt.transcript;
         onCallerTranscript(evt.transcript);
       }
       return;
@@ -915,6 +956,7 @@ async function onRealtimeEvent(evt) {
       const err = evt.error || {};
       logDebug('transcription failed', `type=${err.type} code=${err.code} message=${err.message}`);
       // Leave the "🎤 Voice message" placeholder in place — the voice reply itself is unaffected.
+      pendingVoiceUserText = '🎤 Voice message';   // no real transcript to persist — same placeholder shown in the UI
       onCallerTranscript(null);   // still trigger the answer; language falls back to the session's
       return;
     }
@@ -939,6 +981,8 @@ async function onRealtimeEvent(evt) {
       if (evt.transcript) {
         if (pendingVoiceAssistantMsg) pendingVoiceAssistantMsg.body.textContent = evt.transcript;
         else addMessage('assistant', evt.transcript, { meta: '🔊 voice' });
+        persistVoiceTurn(pendingVoiceUserText, evt.transcript);
+        pendingVoiceUserText = null;
       }
       pendingVoiceAssistantMsg = null;
       pendingVoiceUserBubble = null;
@@ -956,9 +1000,17 @@ async function onRealtimeEvent(evt) {
         next();
       }
       return;
-    case 'error':
-      addMessage('assistant', evt.error?.message || JSON.stringify(evt), { tag: 'voice error', tagClass: 'err' });
+    case 'error': {
+      const msg = evt.error?.message || '';
+      // Benign race, not a real failure: our own interruption logic sends
+      // response.cancel the instant speech_started fires, but the response
+      // it meant to cancel can finish naturally a moment before that reaches
+      // the server — nothing left to cancel. Log it, don't alarm the user
+      // with a red error bubble for something that resolved itself.
+      if (/no active response/i.test(msg)) { logDebug('voice', 'cancel raced a response that had already finished (harmless): ' + msg); return; }
+      addMessage('assistant', msg || JSON.stringify(evt), { tag: 'voice error', tagClass: 'err' });
       return;
+    }
   }
 }
 
@@ -997,12 +1049,15 @@ async function handleFunctionCall(evt) {
 // ============================================================
 // Sidebar / layout
 // ============================================================
-$('newChat').addEventListener('click', () => {
+function startFreshConversation() {
   if (peerConnection) stopVoice();
   chatSessionId = null;
   messages.innerHTML = '';
   empty.hidden = false;
   renderRecents();   // no data change, just clears the "active" highlight
+}
+$('newChat').addEventListener('click', () => {
+  startFreshConversation();
   closeSidebar();
   chatInput.focus();
 });

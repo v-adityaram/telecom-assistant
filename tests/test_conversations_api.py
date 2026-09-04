@@ -66,3 +66,56 @@ def test_missing_mobile_number_is_a_validation_error():
     response = client.get("/api/conversations")
 
     assert response.status_code == 422
+
+
+def test_append_turn_to_new_conversation(monkeypatch):
+    monkeypatch.setattr(conversations_module.conversation_store, "get_conversation", lambda cid, mobile: None)
+    captured = {}
+
+    def fake_upsert(conversation_id, mobile_number, messages):
+        captured["args"] = (conversation_id, mobile_number, messages)
+
+    monkeypatch.setattr(conversations_module.conversation_store, "upsert_conversation", fake_upsert)
+
+    response = client.post(
+        "/api/conversations/voice-conv-1/turns",
+        json={"mobile_number": MOBILE_NUMBER, "user_message": "what's my balance", "assistant_message": "₹102.5"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"success": True}
+    assert captured["args"] == (
+        "voice-conv-1",
+        MOBILE_NUMBER,
+        [
+            {"role": "user", "content": "what's my balance"},
+            {"role": "assistant", "content": "₹102.5"},
+        ],
+    )
+
+
+def test_append_turn_extends_existing_conversation(monkeypatch):
+    existing = [
+        {"role": "user", "content": "show my device"},
+        {"role": "assistant", "content": "OnePlus Nord CE 4"},
+    ]
+    monkeypatch.setattr(
+        conversations_module.conversation_store, "get_conversation", lambda cid, mobile: {"messages": existing}
+    )
+    captured = {}
+    monkeypatch.setattr(
+        conversations_module.conversation_store,
+        "upsert_conversation",
+        lambda cid, mobile, messages: captured.setdefault("messages", messages),
+    )
+
+    response = client.post(
+        "/api/conversations/voice-conv-1/turns",
+        json={"mobile_number": MOBILE_NUMBER, "user_message": "and offers?", "assistant_message": "4 offers available"},
+    )
+
+    assert response.status_code == 200
+    assert captured["messages"] == existing + [
+        {"role": "user", "content": "and offers?"},
+        {"role": "assistant", "content": "4 offers available"},
+    ]
