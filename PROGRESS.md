@@ -6,6 +6,24 @@ so a session on any machine can pick up where the last one left off.
 
 ## Where things stand (2026-09-04, updated)
 
+**Update 28 — Two more real frontend bugs, both fixed.**
+1. **"Please wait — connecting your microphone…" toast required scrolling up to see, in a
+   conversation that had scrolled down.** Root cause: `.voice-overlay` was `position:absolute;
+   inset:0` with `.thread` — the *scrollable* message container — as its containing block.
+   Absolutely-positioned children scroll out of view with their scrolling ancestor's content;
+   they don't stay pinned like `position:fixed`/`sticky` would. Fixed by introducing
+   `.thread-wrap` (a new non-scrolling `position:relative` parent — only `.thread` inside it
+   scrolls) and moving `.voice-overlay` to be anchored to that instead, as a sibling of `.thread`
+   rather than a child. Now always visible over the thread area regardless of scroll position.
+2. **The voice stop button rendered as an oval, not a circle.** `.icon-btn` had explicit
+   `width/height:36px` + `border-radius:50%`, which should be a perfect circle — but no
+   `flex-shrink:0`, so a cramped flex row (the voice bar, competing with the level meter for
+   space) could compress its width below 36px while height stayed put. Fixed with
+   `flex-shrink:0`, plus sized down `36px -> 32px` (and its icon `18px -> 16px`) per direct
+   request. Applies to *every* `.icon-btn`, not just the voice stop button (sidebar toggle,
+   theme toggle) — consistent sizing, not a one-off patch.
+Not yet re-verified live on the actual reported devices.
+
 **Update 27 — Recents sidebar: rows clipping the bottom of their own text (descenders like the
 tail of "p" going missing), same root cause class as Update 22.** `.recents-list` is a
 `flex-direction: column` container; its children (`.recent-item` buttons) never had

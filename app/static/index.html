@@ -145,7 +145,15 @@
   .topbar .icon-btn:hover { background: rgba(0,0,0,.08); }
   #sidebarToggle { display: none; padding: 6px; border-radius: 8px; }
 
-  .thread { flex: 1; overflow-y: auto; padding: 0 16px; position: relative; }
+  /* .voice-overlay's containing block on purpose — NOT .thread. .thread
+     scrolls (overflow-y:auto); an absolutely-positioned child anchored to a
+     scrolling element scrolls out of view with its content, not staying
+     pinned to the viewport. Reported live: the "connecting your
+     microphone…" toast required scrolling up to see once a conversation
+     had scrolled down. This wrapper never scrolls (only .thread inside it
+     does), so inset:0 here always covers the visible thread area. */
+  .thread-wrap { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+  .thread { flex: 1; overflow-y: auto; padding: 0 16px; min-height: 0; }
 
   .voice-overlay {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -249,10 +257,15 @@
   .send-btn:hover { background: var(--accent-hover); }
   .send-btn:disabled { opacity: .4; cursor: default; }
   .send-btn svg { width: 14px; height: 14px; }
-  .icon-btn { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--text); }
+  /* flex-shrink:0 is load-bearing: without it, a flex row that's short on
+     space (e.g. the voice bar with the level meter) can compress this
+     button's width below its set 36px while height stays put, rendering an
+     oval instead of a circle. Also sized down slightly (36px -> 32px) per
+     direct request. */
+  .icon-btn { width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; color: var(--text); }
   .icon-btn:hover { background: var(--surface-2); }
   .icon-btn:disabled { opacity: .35; cursor: default; }
-  .icon-btn svg { width: 18px; height: 18px; }
+  .icon-btn svg { width: 16px; height: 16px; }
   .icon-btn.danger { background: var(--err); color: var(--err-fg); }
 
   .voice-bar {
@@ -353,17 +366,19 @@
       </button>
     </header>
 
-    <div class="thread" id="thread">
-      <div class="thread-inner">
-        <div class="empty" id="empty">
-          <div class="hero-card">
-            <h1>Hey there!</h1>
-            <p>I can help with your balance, plan, device, purchases, and offers.</p>
+    <div class="thread-wrap">
+      <div class="thread" id="thread">
+        <div class="thread-inner">
+          <div class="empty" id="empty">
+            <div class="hero-card">
+              <h1>Hey there!</h1>
+              <p>I can help with your balance, plan, device, purchases, and offers.</p>
+            </div>
+            <div class="quick-label">Quick actions</div>
+            <div class="quick-grid" id="starterChips"></div>
           </div>
-          <div class="quick-label">Quick actions</div>
-          <div class="quick-grid" id="starterChips"></div>
+          <div id="messages"></div>
         </div>
-        <div id="messages"></div>
       </div>
       <div class="voice-overlay" id="voiceOverlay">
         <div class="toast"><span class="pulse-dot"></span>Please wait — connecting your microphone…</div>
