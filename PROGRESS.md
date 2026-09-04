@@ -12,6 +12,14 @@ fixed, and the ChatGPT-style "Recents" sidebar built. Everything below was verif
 the real Azure OpenAI + Cosmos DB + telecom API, both locally and on the deployed VM, not just
 unit-tested — see each entry for how.
 
+**Redeployed and confirmed live (2026-09-04)**: all of the above is running on the VM. The VM's
+`.env` (never in git) currently has two manually-tuned values that differ from `.env.example`'s
+documented defaults — check the VM's actual `.env` before assuming these match the repo:
+`INTENT_CONFIDENCE_THRESHOLD=0.90` (default `0.80`) and `REALTIME_VAD_THRESHOLD=0.8` (default
+`0.7` — this is the idle baseline for Update 19's dynamic scheme, which pushes it to `0.9` live
+while the assistant is speaking). `COSMOS_CONNECTION_STRING` is also set, so conversation
+memory/Recents are actually active on the VM, not just no-op'd.
+
 **Update 15 — Cosmos DB provisioned; conversation memory (F-003) built and wired in.**
 Account `telecom-assistant`, database `telecom-poc-db`, container `conversations`, partition key
 `/mobileNumber` (confirmed correct in Data Explorer before any data was written — this is the one
