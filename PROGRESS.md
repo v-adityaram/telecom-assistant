@@ -138,6 +138,49 @@ space and simplifying `applyTheme()`. Stress-tested at 600px/650px/700px/800px v
 Recents shows real, readable items every time now, never empty. Mobile's `@media (max-width:860px)`
 block was not touched.
 
+**Update 23 — Voice language detection: fixed code-switching, not just this one phrase.** Real bug
+found from a live phone call: the caller said "इसमें कनेक्शन currently active" (genuine
+Hindi-English code-switching — Hindi speakers routinely borrow English nouns mid-sentence; this is
+not broken speech, it's how the language is actually spoken) and the assistant replied in English
+instead of Hindi. Root cause: `detectLanguage()` in `app/static/index.html` picked whichever script
+had the *most matched characters* — and the borrowed English words ("connection", "currently",
+"active") routinely outnumbered the Hindi grammatical scaffolding by raw character count. Fixed
+generally, not with a special case for this phrase: Indic scripts are now checked *before* English,
+and any of them clearing the existing 5-character threshold wins outright regardless of how much
+English is mixed in — English is only chosen when no Indic script clears its threshold at all.
+Verified against 10 cases before deploying, including the exact reported line, two more real lines
+from the same transcript, a **Telugu** code-switch (proving this isn't Hindi-specific), full-English
+and full-Hindi sentences, and every filler case that must not falsely flip language — all 10 pass.
+**One language question from a later call — asking to continue in Malayalam when the caller reports
+never having spoken Malayalam — was left unresolved.** Couldn't reproduce or diagnose it from a
+screenshot alone (unlike the other three items in Update 24 below, which were each proven with a
+concrete before/after test); asked the user to capture the debug drawer log next time it happens
+rather than guess a fix. Worth checking first if it happens again.
+
+**Update 24 — Three more real bugs from continued live phone testing, all fixed and verified live
+(not just reasoned about), none of them silently claimed done.**
+1. **"Cancellation failed: no active response found" showing as a scary red error.** A benign race
+   from the Update 19 interruption fix: `response.cancel` fires the instant speech is detected, but
+   the response it meant to cancel can finish naturally a moment before that reaches the server —
+   nothing left to cancel. Now matched by message text and logged quietly instead of surfaced as a
+   `voice error` chat bubble.
+2. **Chat thread not resetting when the account number changes.** Recents correctly scoped to the
+   new number, but the visible thread kept showing the old number's messages — misleading, since
+   Cosmos partitions by `mobileNumber` so that conversation isn't even reachable under the new
+   number. `saveMobileNumber()` now calls the same `startFreshConversation()` the "New chat" button
+   uses, but **only when the number actually changed** (tracked via `lastMobileNumber`) — re-saving
+   the same number is a no-op, verified both cases directly with a synthetic before/after check
+   rather than just reading the code.
+3. **Voice conversations never appearing in Recents at all — a real wiring gap, not a subtle bug.**
+   Text chat persists through `/api/chat`; voice audio goes straight from the browser to Azure and
+   never touches our backend at all, so nothing was saving those turns to Cosmos. Added
+   `POST /api/conversations/{id}/turns` (`app/api/conversations.py`) and the browser now calls it
+   after each spoken exchange (caller transcript + assistant's reply, or a placeholder if
+   transcription failed) — `chatSessionId` is now generated up front if a voice call starts one
+   fresh. Verified by dispatching real events through the actual `onRealtimeEvent()` handler (not a
+   mock) against the live server and reading the write back from Cosmos — both locally and on the
+   VM.
+
 **Update 7 (handoff — this session is moving to a different laptop):** `REALTIME_VAD_THRESHOLD`
 was pushed to `0.7` (Update 6), tested live, **still not enough** — loud background noise still
 triggered false utterances. Escalated to **`0.9`**, set directly in the VM's `.env` via `nano` over
