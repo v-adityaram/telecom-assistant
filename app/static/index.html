@@ -909,16 +909,17 @@ function triggerResponse(lang) {
   });
 }
 
-// Less sensitive while the assistant is talking (0.9) so its own audio
+// Less sensitive while the assistant is talking (0.95) so its own audio
 // through the speaker, or background noise during playback, doesn't
 // false-trigger as an interruption — but a genuinely louder deliberate
-// interruption still clears 0.9 and cancels it (see speech_started below).
-// Idle raised to 0.9 too (was 0.8) — background voices behind the caller
-// were still triggering turns during normal listening, not just while the
-// assistant spoke. Deliberately not a volume/decibel gate instead: that
-// would risk clipping the start/end of the caller's own quieter syllables,
-// not just background talkers.
-const VAD_THRESHOLD_SPEAKING = 0.9, VAD_THRESHOLD_IDLE = 0.9;
+// interruption still clears 0.95 and cancels it (see speech_started below).
+// Idle at 0.9 — slightly more permissive than while speaking since nothing
+// is competing acoustically then, but still raised from the original 0.8
+// since background voices behind the caller were triggering turns during
+// normal listening too. Deliberately not a volume/decibel gate instead:
+// that would risk clipping the start/end of the caller's own quieter
+// syllables, not just background talkers.
+const VAD_THRESHOLD_SPEAKING = 0.95, VAD_THRESHOLD_IDLE = 0.9;
 function setVadThreshold(threshold) {
   if (!sessionCfg || !dataChannel || dataChannel.readyState !== 'open') return;
   if (sessionCfg.session.audio.input.turn_detection.threshold === threshold) return;
