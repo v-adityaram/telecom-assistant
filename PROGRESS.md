@@ -6,6 +6,52 @@ so a session on any machine can pick up where the last one left off.
 
 ## Where things stand (2026-09-04, updated)
 
+**Update 29 — Self-hosted TURN relay (coturn), to fix voice on TCS/Zscaler-managed laptops.**
+Root-caused via a HAR capture + direct testing: voice fails specifically on TCS-managed laptops
+(21s stuck at `ice checking` then `ice disconnected`/`connection failed`) but works fine on
+personal laptops and phones on the same networks. Confirmed this session as almost certainly
+Zscaler's client agent (installed on TCS-managed devices specifically, travels with the device
+regardless of network — already proven earlier by a phone-hotspot test that didn't help) blocking
+outbound UDP, which is what WebRTC/STUN needs. **STUN cannot fix this** — it only helps discover a
+path through a *normal* NAT, not route around a network that blocks UDP outright.
+**Fix: a self-hosted TURN relay**, chosen over a managed/paid TURN service (Twilio, Metered, etc.)
+per direct user preference — free, runs on the existing VM, no new vendor.
+- **How it works**: the caller's browser opens exactly one outbound TCP/TLS connection to *our own*
+  TURN server on port 5349 — indistinguishable from ordinary HTTPS to Zscaler, so it gets through.
+  The VM then relays outward to Azure's Realtime API over UDP itself, which is unrestricted (no
+  corporate agent runs on the Azure VM).
+- **Credentials are ephemeral, mirroring the existing Azure OpenAI pattern** (`realtime.py`'s
+  short-lived token) — never a standing secret in browser JS. `app/services/turn_credentials.py`
+  implements coturn's standard REST-API credential scheme (HMAC-SHA1 of an expiry timestamp under a
+  server-only shared secret); `POST /api/voice/session` (`app/api/voice.py`) now returns a `turn`
+  field (`null` when `TURN_SHARED_SECRET`/`TURN_DOMAIN` aren't configured — chat/voice behave
+  identically either way, same no-op-when-unconfigured pattern as Cosmos). Frontend
+  (`app/static/index.html`) adds it to `RTCPeerConnection`'s `iceServers` alongside the existing
+  STUN entry when present.
+- **Deployment** (`deploy/setup_vm.sh`): installs `coturn`, points it at the *same* Let's Encrypt
+  cert already obtained for the app (copied into a coturn-owned location since coturn's user can't
+  read `/etc/letsencrypt` directly — refreshed automatically via a
+  `/etc/letsencrypt/renewal-hooks/deploy/` script on every renewal, not just at setup time), narrow
+  relay port range (49160-49200 — ~40 concurrent calls, keeps the NSG footprint small), and
+  auto-sets `TURN_DOMAIN` in `.env` to match `PUBLIC_DOMAIN` so it's never a second value to keep in
+  sync by hand. Entirely opt-in: skipped (and coturn disabled if previously enabled) whenever
+  `TURN_SHARED_SECRET` is blank in `.env`.
+- **What the user still needs to do manually**: (1) set `TURN_SHARED_SECRET` in the VM's `.env` to
+  a real random string (not auto-generated — a deliberate secret you choose), (2) add an inbound
+  NSG rule for **TCP 5349** (the relay port range needs no inbound rule — that traffic is VM-
+  initiated outbound UDP to the real peer, and NSGs are stateful, so return traffic is allowed
+  automatically).
+- **Staged, not the maximal version, on purpose**: this ships plain TURN-over-TLS on port 5349, not
+  the full SNI-multiplexed port-443 approach (sharing 443 with nginx via `ssl_preread` routing,
+  which would make TURN traffic indistinguishable from the app's own HTTPS too, for networks that
+  block literally everything except 80/443). Deliberately not built yet — it's a much bigger,
+  riskier nginx refactor, and it's not yet confirmed that Zscaler blocks 5349 specifically (it may
+  only be blocking UDP, in which case this simpler version is sufficient). **Test on a TCS laptop
+  after this deploy before investing in the 443-multiplexed version** — only build that if 5349
+  alone still doesn't get through.
+- Not yet retested live end-to-end (needs a real TCS laptop + the NSG rule added) — unit tests only
+  cover the credential-generation logic and the `/api/voice/session` response shape.
+
 **Update 28 — Two more real frontend bugs, both fixed.**
 1. **"Please wait — connecting your microphone…" toast required scrolling up to see, in a
    conversation that had scrolled down.** Root cause: `.voice-overlay` was `position:absolute;

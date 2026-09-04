@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     # Configurable (not hardcoded) since this needs real-environment tuning.
     realtime_vad_threshold: float = 0.7
 
+    # Self-hosted coturn TURN relay (see deploy/setup_vm.sh) — fixes voice on
+    # networks that block outbound UDP/WebRTC entirely (e.g. corporate
+    # proxies like Zscaler), which no STUN server can work around, since
+    # TURN relays over a plain outbound TCP/TLS connection that looks like
+    # ordinary HTTPS. Empty secret disables it — voice falls back to
+    # STUN-only exactly as before, no error either way.
+    turn_shared_secret: str = ""
+    turn_domain: str = ""
+
     telecom_api_base_url: str = ""
     telecom_api_key: str = ""
 

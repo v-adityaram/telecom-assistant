@@ -740,9 +740,20 @@ async function startVoice() {
     // candidates, which fail to connect across most NATs (works by luck on
     // simple home/hotspot networks, fails on stricter corporate NATs/firewalls
     // — reported as stuck on "Requesting microphone" then ICE disconnected).
-    peerConnection = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    });
+    // session.turn (present only when the backend has TURN configured — see
+    // app/services/turn_credentials.py) adds a relay path over plain
+    // TCP/TLS, which is what actually gets through networks that block
+    // outbound UDP entirely (STUN alone can't fix that, only route around
+    // NATs that allow UDP). Time-limited credentials minted per session,
+    // never a standing secret shipped to the browser.
+    const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+    if (session.turn) {
+      iceServers.push({
+        urls: session.turn.urls, username: session.turn.username, credential: session.turn.credential,
+      });
+      logDebug('rtc', 'TURN relay configured');
+    }
+    peerConnection = new RTCPeerConnection({ iceServers });
     // Attached to the DOM (hidden) rather than left as a detached element —
     // iOS Safari's WebRTC audio-session/echo-cancellation handling has been
     // unreliable for playback that isn't part of the document, reported as

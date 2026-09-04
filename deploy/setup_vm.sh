@@ -21,7 +21,7 @@ PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-$(echo "$PUBLIC_IP" | tr '.' '-').sslip.io}"
 [ -f "$APP_DIR/.env" ] || { echo "!! $APP_DIR/.env is missing — copy it over first (it is never committed)"; exit 1; }
 
 echo "== packages"
-DEBIAN_FRONTEND=noninteractive apt-get install -y -q nginx python3-venv certbot >/dev/null
+DEBIAN_FRONTEND=noninteractive apt-get install -y -q nginx python3-venv certbot coturn >/dev/null
 
 echo "== python venv + dependencies (as $APP_USER)"
 sudo -u "$APP_USER" bash -c "
@@ -56,6 +56,69 @@ EOF
   certbot certonly --webroot -w /var/www/certbot -d "$PUBLIC_DOMAIN" \
     --non-interactive --agree-tos --register-unsafely-without-email \
     --deploy-hook "systemctl reload nginx"
+fi
+
+echo "== TURN relay (coturn) — fixes voice on networks that block outbound UDP entirely"
+TURN_SHARED_SECRET="$(grep -E '^TURN_SHARED_SECRET=' "$APP_DIR/.env" 2>/dev/null | cut -d= -f2- || true)"
+if [ -z "$TURN_SHARED_SECRET" ]; then
+  echo "   TURN_SHARED_SECRET not set in .env — skipping, voice falls back to STUN-only"
+  systemctl disable --now coturn >/dev/null 2>&1 || true
+else
+  # The app also needs to know its own domain to build turns: URLs — set
+  # automatically here so it's never a second value to keep in sync by hand.
+  if grep -qE '^TURN_DOMAIN=' "$APP_DIR/.env"; then
+    sed -i "s|^TURN_DOMAIN=.*|TURN_DOMAIN=$PUBLIC_DOMAIN|" "$APP_DIR/.env"
+  else
+    echo "TURN_DOMAIN=$PUBLIC_DOMAIN" >> "$APP_DIR/.env"
+  fi
+
+  # coturn's default user can't read /etc/letsencrypt (root-only) — copying
+  # into a dedicated, coturn-owned location sidesteps ACL wrangling. Kept
+  # fresh on every renewal by the deploy-hook script below, not just here.
+  install -d -m 755 /etc/turnserver-certs
+  cp "/etc/letsencrypt/live/$PUBLIC_DOMAIN/fullchain.pem" "/etc/letsencrypt/live/$PUBLIC_DOMAIN/privkey.pem" /etc/turnserver-certs/
+  chown turnserver:turnserver /etc/turnserver-certs/*.pem
+  chmod 600 /etc/turnserver-certs/*.pem
+
+  cat > /etc/turnserver.conf <<EOF
+listening-port=3478
+tls-listening-port=5349
+listening-ip=0.0.0.0
+external-ip=$PUBLIC_IP
+realm=$PUBLIC_DOMAIN
+use-auth-secret
+static-auth-secret=$TURN_SHARED_SECRET
+cert=/etc/turnserver-certs/fullchain.pem
+pkey=/etc/turnserver-certs/privkey.pem
+# Narrow range (40 ports = ~40 concurrent relayed calls, plenty for a POC)
+# keeps the matching NSG rule small. Relay traffic to the real peer is VM-
+# initiated outbound UDP — NSGs are stateful, so no inbound rule is needed
+# for it, only for 5349 itself (the browser's inbound connection to us).
+min-port=49160
+max-port=49200
+no-cli
+no-tlsv1
+no-tlsv1_1
+fingerprint
+EOF
+  chmod 640 /etc/turnserver.conf
+  chown root:turnserver /etc/turnserver.conf
+
+  install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy
+  cat > /etc/letsencrypt/renewal-hooks/deploy/refresh-coturn.sh <<EOF
+#!/usr/bin/env bash
+set -e
+cp "/etc/letsencrypt/live/$PUBLIC_DOMAIN/fullchain.pem" "/etc/letsencrypt/live/$PUBLIC_DOMAIN/privkey.pem" /etc/turnserver-certs/
+chown turnserver:turnserver /etc/turnserver-certs/*.pem
+chmod 600 /etc/turnserver-certs/*.pem
+systemctl restart coturn
+EOF
+  chmod 755 /etc/letsencrypt/renewal-hooks/deploy/refresh-coturn.sh
+
+  sed -i 's/^#\?TURNSERVER_ENABLED=.*/TURNSERVER_ENABLED=1/' /etc/default/coturn 2>/dev/null || echo "TURNSERVER_ENABLED=1" >> /etc/default/coturn
+  systemctl enable --now coturn >/dev/null 2>&1
+  systemctl restart coturn
+  echo "   coturn active — remember to add an inbound NSG rule for TCP 5349 if not already present"
 fi
 
 echo "== nginx"

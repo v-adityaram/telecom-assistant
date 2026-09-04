@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.api import voice as voice_module
+from app.config import get_settings
 from app.main import app
 from app.services.realtime import RealtimeSessionResult
 from app.services.telecom_client import ToolResult
@@ -24,6 +25,37 @@ def test_voice_session_returns_client_secret_on_success(monkeypatch):
     assert response.status_code == 200
     assert body["success"] is True
     assert body["client_secret"] == "tok-123"
+
+
+def test_voice_session_omits_turn_when_unconfigured(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "turn_shared_secret", "")
+
+    async def fake_create_realtime_session():
+        return RealtimeSessionResult(success=True, client_secret="tok-123")
+
+    monkeypatch.setattr(voice_module, "create_realtime_session", fake_create_realtime_session)
+
+    response = client.post("/api/voice/session")
+
+    assert response.json()["turn"] is None
+
+
+def test_voice_session_includes_turn_when_configured(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "turn_shared_secret", "shh")
+    monkeypatch.setattr(settings, "turn_domain", "turn.example.com")
+
+    async def fake_create_realtime_session():
+        return RealtimeSessionResult(success=True, client_secret="tok-123")
+
+    monkeypatch.setattr(voice_module, "create_realtime_session", fake_create_realtime_session)
+
+    response = client.post("/api/voice/session")
+
+    turn = response.json()["turn"]
+    assert turn["urls"] == ["turns:turn.example.com:5349?transport=tcp"]
+    assert turn["username"] and turn["credential"]
 
 
 def test_voice_session_surfaces_failure(monkeypatch):
