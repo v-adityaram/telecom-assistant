@@ -16,9 +16,21 @@ unit-tested — see each entry for how.
 `.env` (never in git) currently has two manually-tuned values that differ from `.env.example`'s
 documented defaults — check the VM's actual `.env` before assuming these match the repo:
 `INTENT_CONFIDENCE_THRESHOLD=0.90` (default `0.80`) and `REALTIME_VAD_THRESHOLD=0.8` (default
-`0.7` — this is the idle baseline for Update 19's dynamic scheme, which pushes it to `0.9` live
-while the assistant is speaking). `COSMOS_CONNECTION_STRING` is also set, so conversation
-memory/Recents are actually active on the VM, not just no-op'd.
+`0.7` — this was the idle baseline for Update 19's dynamic scheme; see the next entry, it's since
+moved to `0.9` in code). `COSMOS_CONNECTION_STRING` is also set, so conversation memory/Recents
+are actually active on the VM, not just no-op'd.
+
+**Update 25 — VAD idle threshold raised 0.8 → 0.9, unifying it with the speaking threshold.**
+Direct user report: background voices behind the caller were still triggering turns during normal
+listening (not just while the assistant was talking, which `0.9` already covered per Update 19).
+`VAD_THRESHOLD_IDLE` in `app/static/index.html` raised from `0.8` to `0.9` to match
+`VAD_THRESHOLD_SPEAKING` — both states now equally strict. **Deliberately not a decibel/volume
+gate** — considered and rejected by the user themselves: a hard loudness cutoff risks clipping the
+start/end of their own quieter syllables along with background talkers, not just filtering the
+latter. The VM's `.env` still has `REALTIME_VAD_THRESHOLD=0.8` (the mint-time initial value,
+overridden live once `setVadThreshold()` runs) — bump that too on next redeploy for consistency
+from the very first moment of a call, though the dynamic override makes this a minor gap, not a
+functional one. Not yet retested live against real background chatter.
 
 **Update 15 — Cosmos DB provisioned; conversation memory (F-003) built and wired in.**
 Account `telecom-assistant`, database `telecom-poc-db`, container `conversations`, partition key
